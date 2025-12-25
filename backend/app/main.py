@@ -1,28 +1,37 @@
+"""FastAPI application factory and main entry point"""
 from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="reviewlens - backend")
+from .api import routes_chat
+from .core.settings import settings
 
-class Review(BaseModel):
-    id: int
-    title: str
-    content: str
 
-# in-memory sample store
-_reviews: List[Review] = [
-    Review(id=1, title="Example review", content="This is a sample review."),
-]
+def create_app() -> FastAPI:
+    """Create and configure FastAPI application"""
+    app = FastAPI(
+        title="ReviewLens API",
+        description="후회를 줄이기 위한 대화형 리뷰 분석 API",
+        version="0.1.0",
+    )
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-@app.get("/reviews", response_model=List[Review])
-async def list_reviews():
-    return _reviews
+    # Register routers
+    app.include_router(routes_chat.router, prefix="/api/chat", tags=["chat"])
 
-@app.post("/reviews", response_model=Review)
-async def create_review(r: Review):
-    _reviews.append(r)
-    return r
+    return app
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)

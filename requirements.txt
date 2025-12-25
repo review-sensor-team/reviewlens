@@ -1,0 +1,9 @@
+# ReviewLens - Root requirements
+# Use backend/requirements.txt for full backend dependencies
+
+# Core dependencies
+pandas==2.3.3
+pytest==8.4.2
+
+# For development convenience
+-r backend/requirements.txt

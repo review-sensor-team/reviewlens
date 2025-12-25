@@ -8,7 +8,19 @@ __pycache__/
 # Node
 node_modules/
 /dist
+package-lock.json
 
 # Editor
 .vscode/
 .DS_Store
+
+# Output directories
+out/*.json
+out/*.txt
+out/*.md
+out_test/
+
+# Temp/Cache
+.pytest_cache/
+.playwright_profile/
+*.egg-info/
