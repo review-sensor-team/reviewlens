@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: |
+          if [ -f backend/requirements.txt ]; then
+            python -m pip install --upgrade pip
+            pip install -r backend/requirements.txt
+          else
+            echo "No backend/requirements.txt found; skipping install"
+          fi
+      - name: Run backend tests
+        run: |
+          if command -v pytest >/dev/null 2>&1; then
+            pytest -q
+          else
+            echo "pytest not found; skipping backend tests"
+          fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+      - name: Install frontend dependencies
+        run: |
+          if [ -f frontend/package.json ]; then
+            cd frontend
+            npm ci
+          else
+            echo "No frontend/package.json found; skipping install"
+          fi
+      - name: Build or Test frontend
+        run: |
+          if [ -f frontend/package.json ]; then
+            cd frontend
+            if npm run | grep -q " build"; then
+              npm run build
+            elif npm run | grep -q " test"; then
+              npm test
+            else
+              echo "No build/test scripts found in frontend/package.json"
+            fi
+          fi
