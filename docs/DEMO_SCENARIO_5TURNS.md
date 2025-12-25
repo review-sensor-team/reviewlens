@@ -5,33 +5,6 @@
 환경: `backend/data`의 샘플 CSV들을 사용한다 (reg_factor.csv, reg_question.csv, review_sample.csv).
 
 시나리오 요약 (예시 대화):
-
-턴 1
-- 사용자 입력: "밤에 가동하면 너무 시끄럽나요?"
-- 봇 질문(예상 후보): "제품을 주로 어떤 환경에서 사용하시나요?" 또는 "소음 때문에 불편하신가요?"
-- factor posterior 변화: `noise_sleep`이 소폭 상승
-- evidence 요약: 소음 관련 리뷰 일부 포착
-
-턴 2
-- 사용자 입력: "잠자기 전에 틀면 팬 소리가 거슬려서 잠이 어려워요"
-- 봇 질문(예상 후보): "소음이 주로 팬 소리인지, 모터/진동인지 알려주실래요?"
-- factor posterior 변화: `noise_sleep` 우세
-- evidence 요약: 잠 관련 소음 리뷰 증가
-
-턴 3
-- 사용자 입력: "네, 팬 소리가 지속적으로 들리고 밤에 더 신경써져요"
-- 봇 질문(예상 후보): 후속설문(예: 제품 사용 기간, 소음 세기)
-- factor posterior 변화: `noise_sleep`이 최상위로 고정
-- evidence 요약: 복수 리뷰에서 수면 방해 관련 코멘트 다수 발견
-
-종료 조건: 3턴 이상이면서 top1이 2연속 동일하거나 최대 5턴 도달
-
-결과(종료 시)
-- `llm_context_demo.json` 생성
-- top_factors[0] == `noise_sleep`
-- evidence_reviews 길이 >= 8
-
-이 문서는 `tests/test_demo_scenario.py`의 기대 동작과 매핑됩니다.
 	•	Turn 1 (User): “가열식 가습기 밤에 틀어도 괜찮을까요? 소음이 걱정돼요.”
 	•	Bot 질문(예상): “주로 밤이나 수면 중에 사용하실 예정인가요?”
 	•	top1 예상: noise_sleep
