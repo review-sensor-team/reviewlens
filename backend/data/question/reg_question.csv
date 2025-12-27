@@ -1,0 +1,9 @@
+question_id,factor_key,question_text,answer_type,choices,priority,next_factor_hint
+Q1,noise_sleep,주로 밤이나 수면 중에 사용하실 예정인가요?,single_choice,"예|아니오",1,noise_sleep
+Q2,noise_sleep,소음이나 불빛에 민감한 편이신가요?,single_choice,"민감함|보통|둔감",2,noise_sleep
+Q3,heating_time,가습기를 켜자마자 바로 효과가 나와야 하나요?,single_choice,"바로 필요|조금 기다려도 됨",3,heating_time
+Q4,warmth_effect,차가운 미스트보다 따뜻한 수증기를 선호하시나요?,single_choice,"따뜻한게 좋음|상관없음",4,warmth_effect
+Q5,maintenance,가습기 청소나 물 보충이 자주 필요한 건 괜찮으신가요?,single_choice,"번거로움 싫음|감수 가능",5,maintenance
+Q6,safety,아이 또는 부모님이 사용할 예정인가요?,single_choice,"예|아니오",6,safety
+Q7,expectation_gap,가격 대비 성능에 대한 기대치가 높은 편인가요?,single_choice,"높음|보통",7,expectation_gap
+Q8,expectation_gap,조금 불편해도 가열식의 장점을 더 중요하게 보시나요?,single_choice,"예|아니오",8,expectation_gap
