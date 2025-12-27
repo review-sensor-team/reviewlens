@@ -24,7 +24,8 @@ jobs:
       - name: Run backend tests
         run: |
           if command -v pytest >/dev/null 2>&1; then
-            pytest -q
+            export PYTHONPATH=$PYTHONPATH:$(pwd)
+            pytest tests/ -v
           else
             echo "pytest not found; skipping backend tests"
           fi
