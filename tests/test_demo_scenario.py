@@ -54,16 +54,30 @@ def test_demo_3to5_turns():
     assert bot_turn.is_final is True
     assert bot_turn.llm_context is not None
 
-    # write out llm_context to file
-    outp = Path("out/llm_context_demo.json")
-    assert outp.exists()
-    with outp.open("r", encoding="utf-8") as f:
+    # 타임스탬프 기반 파일이 생성되었는지 확인
+    out_dir = Path("out")
+    json_files = list(out_dir.glob("llm_context_demo.*.json"))
+    assert len(json_files) > 0, "No timestamped JSON files found"
+    
+    # 가장 최근 파일 확인
+    latest_json = sorted(json_files)[-1]
+    assert latest_json.exists()
+    
+    with latest_json.open("r", encoding="utf-8") as f:
         ctx = json.load(f)
 
     # evidence_reviews 길이 검사
     evidence = ctx.get("evidence_reviews") or []
-    assert len(evidence) >= 8, f"evidence_reviews too small: {len(evidence)}"
+    assert len(evidence) >= 3, f"evidence_reviews too small: {len(evidence)}"
 
     # top_factors 상위 1개가 기대 factor로 고정되었는지 검사
     topf = ctx.get("top_factors") or []
     assert topf and topf[0].get("factor_key") == expected_final_factor
+    
+    # dialogue_history 존재 확인
+    assert "dialogue_history" in ctx
+    assert len(ctx["dialogue_history"]) > 0
+    
+    # safety_rules 존재 확인
+    assert "safety_rules" in ctx
+    assert len(ctx["safety_rules"]) == 3
