@@ -1,0 +1,7 @@
+factor_key,category,display_name,description,anchor_terms,context_terms,negation_terms,weight
+noise_sleep,appliance_heated_humidifier,수면 중 소음/눈부심,밤이나 수면 중 사용 시 소음·빛으로 불편함을 느끼는 후회 요인,"소음|시끄럽|웅웅|눈부시|빛|LED","수면|밤|잠|취침|새벽","없|안|조용|괜찮",1.2
+heating_time,appliance_heated_humidifier,가열 대기시간,가열식 특성상 물이 끓기까지 걸리는 시간이 불편하게 느껴지는 요인,"가열|끓|대기|시간|늦","처음|켜면|시작","짧|빠르|금방",1.0
+warmth_effect,appliance_heated_humidifier,따뜻함 체감,차가운 미스트 대비 따뜻한 수증기로 만족/불만이 갈리는 요인,"따뜻|온기|훈훈","겨울|실내|방","차갑|미지근",0.9
+maintenance,appliance_heated_humidifier,관리·청소 번거로움,물 보충·세척·석회 관리가 귀찮게 느껴지는 요인,"청소|관리|석회|물때|귀찮","매일|자주|사용","쉽|간편|편하",1.1
+safety,appliance_heated_humidifier,안전/화상 우려,가열식 특성으로 인한 화상·아이 사용 우려,"뜨겁|화상|위험|조심","아이|아기|부모님","안전|문제없",1.0
+expectation_gap,appliance_heated_humidifier,기대 대비 성능,가격이나 기대에 비해 성능이 아쉽다고 느끼는 요인,"기대|생각보다|별로|아쉽","가격|대비","만족|좋|괜찮",1.3
