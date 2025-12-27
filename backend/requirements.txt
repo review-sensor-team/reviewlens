@@ -8,6 +8,9 @@ pydantic-settings==2.6.0
 pandas==2.3.3
 numpy==2.0.2
 
+# Web scraping
+requests==2.32.3
+
 # API utilities
 python-multipart==0.0.20
 
