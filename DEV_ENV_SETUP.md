@@ -153,7 +153,7 @@ git commit -m "feature: 리뷰 센서 태그 추출 구현"
 
 ### 7-3. Push
 ```bash
-git push origin feat/내작업이름
+git push origin feature/내작업이름
 ```
 
 ---
@@ -164,7 +164,7 @@ git push origin feat/내작업이름
 ```bash
 git checkout main
 git pull origin main
-git checkout feat/내작업이름
+git checkout feature/내작업이름
 git merge main
 ```
 
@@ -177,10 +177,14 @@ git merge main
 ## 9. Pull Request(PR) 생성
 
 GitHub 웹에서:
-- 상단의 Pull requests 탭에서  `Compare & Pull Request` 클릭
+- 상단의 Pull requests 탭에서 해당 브랜치의 `Compare & Pull Request` 클릭
+![alt text](img/image.png)
 - Reviewers를 클릭하여 'Copilot'을 기본으로 선택하고, 관련 확인자 필요한 경우 1인 이상 선택합니다.
+![alt text](img/image-1.png)
 - 기본 'Copilot'의 리뷰를 통과한 후 관련 개발자가 컨펌(승인)하면 PR 아래쪽에 병합버튼이 활성화 됩니다.
+![alt text](img/image-2.png)
 - "Confirm squash and merge"를 선택하여 커밋 메시지를 입력한 후 "Confirm squash and merge"를 클릭하여 병합을 완료합니다. 
+![alt text](img/image-3.png)
 - dev에 뿌리를 두었기 때문에 PR의 'Confirm(승인)'을 통과하여 병합이 완료되면 자동으로 dev로 병합됩니다.
 
 ### PR 작성시 입력해야하는 내용 예시
