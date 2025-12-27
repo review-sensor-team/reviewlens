@@ -98,48 +98,6 @@ python scripts/collect_smartstore_reviews.py \
 - 제어 문자 제거
 - CSV/JSON 포맷 안전성 확보
 
-### 방법 2: Selenium 원본 수집
-
-원본 리뷰 데이터를 그대로 수집합니다.
-
-#### 사용법
-```bash
-# 기본 사용 (헤드리스 모드)
-python scripts/fetch_smartstore_reviews_selenium.py "https://brand.naver.com/airmade/products/11129902190" --headless
-
-# 브라우저 창 보면서 실행
-python scripts/fetch_smartstore_reviews_selenium.py "https://brand.naver.com/airmade/products/11129902190"
-
-# 최대 100개 리뷰만 수집
-python scripts/fetch_smartstore_reviews_selenium.py "https://brand.naver.com/airmade/products/11129902190" --max-reviews 100 --headless
-
-# JSON 형식으로 저장
-python scripts/fetch_smartstore_reviews_selenium.py "https://brand.naver.com/airmade/products/11129902190" --format json --headless
-
-# 출력 파일명 지정
-python scripts/fetch_smartstore_reviews_selenium.py "https://brand.naver.com/airmade/products/11129902190" -o data/airmade_reviews.csv --headless
-```
-
-#### 옵션
-- `--output`, `-o`: 출력 파일명 (기본값: smartstore_reviews.csv)
-- `--format`, `-f`: 출력 형식 (csv, json, both)
-- `--max-reviews`, `-m`: 최대 리뷰 수
-- `--headless`: 브라우저 창을 숨김 (백그라운드 실행)
-
-### 방법 3: API 직접 호출 (실험적)
-
-네이버의 Rate Limiting으로 인해 현재는 제한적입니다.
-
-```bash
-# 먼저 API 엔드포인트 찾기
-python scripts/find_review_api.py "https://brand.naver.com/airmade/products/11129902190"
-
-# API를 찾았다면 직접 호출 스크립트 수정 후 사용
-python scripts/fetch_smartstore_reviews.py "https://brand.naver.com/airmade/products/11129902190"
-```
-
-**주의**: 이 방법은 네이버의 API 변경이나 Rate Limiting으로 작동하지 않을 수 있습니다.
-
 ### 수동으로 API 찾기
 
 브라우저 개발자 도구를 사용하여 실제 API 엔드포인트를 찾는 방법:
@@ -153,17 +111,6 @@ python scripts/fetch_smartstore_reviews.py "https://brand.naver.com/airmade/prod
 7. 리뷰 데이터를 반환하는 API 요청 찾기
 8. Request URL, Headers, Parameters 복사
 9. `fetch_smartstore_reviews.py`의 `fetch_reviews()` 메서드 수정
-
-## 기타 스크립트
-
-### 리뷰 데이터 형식 변환
-
-```bash
-# JSONL을 CSV로 변환
-python scripts/convert_reviews_jsonl_to_csv.py input.jsonl output.csv
-```
-
-## 수집된 데이터 형식
 
 ### Backend 형식 (collect_smartstore_reviews.py)
 
@@ -194,35 +141,9 @@ review_id,rating,text,created_at
 ]
 ```
 
-### 원본 형식 (fetch_smartstore_reviews_selenium.py)
-
-**CSV 예시:**
-```csv
-rating,content,author,created_at,helpful_count,is_photo,photo_count
-5,"정말 좋아요",user123,2024.01.15,10,true,2
-4,"괜찮네요",user456,2024.01.14,5,false,0
-```
-
-**JSON 예시:**
-```json
-[
-  {
-    "rating": 5,
-    "content": "정말 좋아요",
-    "author": "user123",
-    "created_at": "2024.01.15",
-    "helpful_count": 10,
-    "is_photo": true,
-    "photo_count": 2
-  }
-]
-```
-
-## 사용 예시
-
 ### 제품별 리뷰 수집 시나리오
 
-**1. 고평점 리뷰만 수집 (마케팅 자료용)**
+**1. 고평점 리뷰만 수집 (만족포인트 자료용)**
 ```bash
 python scripts/collect_smartstore_reviews.py \
   "https://brand.naver.com/airmade/products/11129902190" \
@@ -234,7 +155,7 @@ python scripts/collect_smartstore_reviews.py \
   --headless
 ```
 
-**2. 저평점 리뷰만 수집 (개선점 분석용)**
+**2. 저평점 리뷰만 수집 (후회포인트 분석용)**
 ```bash
 python scripts/collect_smartstore_reviews.py \
   "https://brand.naver.com/airmade/products/11129902190" \
@@ -257,17 +178,6 @@ python scripts/collect_smartstore_reviews.py \
   --headless
 ```
 
-**4. 중간 평점 리뷰 수집 (3-4점, 상세 피드백 분석용)**
-```bash
-python scripts/collect_smartstore_reviews.py \
-  "https://brand.naver.com/airmade/products/11129902190" \
-  --category appliance \
-  --product-name airmade_4502 \
-  --rating 3 \
-  --max-rating 4 \
-  --format json \
-  --headless
-```
 
 ## 문제 해결
 
@@ -301,8 +211,6 @@ python scripts/collect_smartstore_reviews.py \
 
 ### 권장 사용 방법
 - **일반 분석**: `collect_smartstore_reviews.py` 사용 (백엔드 형식으로 자동 변환)
-- **원본 데이터 보관**: `fetch_smartstore_reviews_selenium.py` 사용
-- **디버깅**: `--headless` 옵션 제거하여 브라우저 동작 확인
 
 ### 데이터 수집 가이드라인
 - 네이버의 로봇 감지 시스템을 우회하기 위해 적절한 지연 시간 사용
@@ -317,6 +225,3 @@ python scripts/collect_smartstore_reviews.py \
 
 ### 스크립트 목록
 - **collect_smartstore_reviews.py**: 리뷰 수집 및 백엔드 형식 변환 (⭐ 권장)
-- **fetch_smartstore_reviews_selenium.py**: Selenium 기반 원본 리뷰 수집
-- **fetch_smartstore_reviews.py**: API 직접 호출 (실험적)
-- **find_review_api.py**: 리뷰 API 엔드포인트 탐색 도구
