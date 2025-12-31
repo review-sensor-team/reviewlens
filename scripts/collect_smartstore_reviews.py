@@ -33,11 +33,14 @@ import hashlib
 
 try:
 <<<<<<< HEAD
+<<<<<<< HEAD
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     import undetected_chromedriver as uc
 =======
+=======
+>>>>>>> dev
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
@@ -45,6 +48,9 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from webdriver_manager.chrome import ChromeDriverManager
+<<<<<<< HEAD
+>>>>>>> dev
+=======
 >>>>>>> dev
     SELENIUM_AVAILABLE = True
     
@@ -91,7 +97,11 @@ class SmartStoreReviewCollector:
     def __init__(self, product_url: str, headless: bool = True):
         if not SELENIUM_AVAILABLE:
 <<<<<<< HEAD
+<<<<<<< HEAD
             raise ImportError("Selenium과 undetected-chromedriver가 설치되어 있지 않습니다. pip install selenium undetected-chromedriver")
+=======
+            raise ImportError("Selenium과 webdriver-manager가 설치되어 있지 않습니다. pip install selenium webdriver-manager")
+>>>>>>> dev
 =======
             raise ImportError("Selenium과 webdriver-manager가 설치되어 있지 않습니다. pip install selenium webdriver-manager")
 >>>>>>> dev
@@ -109,9 +119,12 @@ class SmartStoreReviewCollector:
     
     def _init_driver(self, headless: bool):
 <<<<<<< HEAD
+<<<<<<< HEAD
         """Chrome 드라이버 초기화 - undetected-chromedriver 사용"""
         options = uc.ChromeOptions()
 =======
+=======
+>>>>>>> dev
         """Chrome 드라이버 초기화 - URL에 따라 다른 드라이버 사용"""
         is_brand_naver = 'brand.naver.com' in self.product_url
         
@@ -133,6 +146,9 @@ class SmartStoreReviewCollector:
     def _init_selenium_driver(self, headless: bool):
         """일반 Selenium WebDriver 초기화"""
         options = Options()
+<<<<<<< HEAD
+>>>>>>> dev
+=======
 >>>>>>> dev
         
         # headless 모드 설정
@@ -140,6 +156,10 @@ class SmartStoreReviewCollector:
             options.add_argument('--headless=new')
             options.add_argument('--window-size=1920,1080')
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+            options.add_argument('--disable-gpu')
+>>>>>>> dev
 =======
             options.add_argument('--disable-gpu')
 >>>>>>> dev
@@ -150,11 +170,14 @@ class SmartStoreReviewCollector:
         options.add_argument('--disable-blink-features=AutomationControlled')
         
 <<<<<<< HEAD
+<<<<<<< HEAD
         # undetected-chromedriver로 드라이버 생성
         driver = uc.Chrome(options=options)
         
         # 창 크기 설정 (headless가 아닐 때만)
 =======
+=======
+>>>>>>> dev
         # User-Agent 설정 (봇 감지 회피)
         options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
@@ -176,6 +199,9 @@ class SmartStoreReviewCollector:
         })
         
         # 창 크기 설정
+<<<<<<< HEAD
+>>>>>>> dev
+=======
 >>>>>>> dev
         if not headless:
             try:
@@ -186,7 +212,10 @@ class SmartStoreReviewCollector:
         return driver
     
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> dev
     def _init_uc_driver(self):
         """undetected-chromedriver 초기화 (headless 비활성화)"""
         options = uc.ChromeOptions()
@@ -209,6 +238,9 @@ class SmartStoreReviewCollector:
         
         return driver
     
+<<<<<<< HEAD
+>>>>>>> dev
+=======
 >>>>>>> dev
     def _wait_for_captcha(self):
         """보안확인(CAPTCHA) 페이지 감지 및 대기"""
@@ -281,11 +313,17 @@ class SmartStoreReviewCollector:
             self._navigate_to_review_tab()
             
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> dev
             # 별점 필터가 있으면 '평점 낮은순' 정렬로 변경
             if rating is not None or max_rating is not None:
                 self._set_sort_by_low_rating()
             
+<<<<<<< HEAD
+>>>>>>> dev
+=======
 >>>>>>> dev
             # 여러 페이지에서 리뷰 수집
             print("\n리뷰 데이터 수집 중...")
@@ -361,7 +399,11 @@ class SmartStoreReviewCollector:
                     time.sleep(3)  # 리뷰 로딩 대기
                     
 <<<<<<< HEAD
+<<<<<<< HEAD
                     # 리뷰 탭 클릭 후 페이지 소스 확인
+=======
+                    # 리뷰 구조 확인 (디버깅용)
+>>>>>>> dev
 =======
                     # 리뷰 구조 확인 (디버깅용)
 >>>>>>> dev
@@ -376,6 +418,7 @@ class SmartStoreReviewCollector:
         except Exception as e:
             print(f"리뷰 탭 이동 실패: {e}")
     
+<<<<<<< HEAD
 <<<<<<< HEAD
     def _debug_review_structure(self):
         """리뷰 구조 디버깅"""
@@ -444,6 +487,8 @@ class SmartStoreReviewCollector:
         return all_reviews
     
 =======
+=======
+>>>>>>> dev
     def _set_sort_by_low_rating(self):
         """리뷰 정렬을 '평점 낮은순'으로 변경"""
         try:
@@ -560,6 +605,9 @@ class SmartStoreReviewCollector:
         
         return all_reviews
     
+<<<<<<< HEAD
+>>>>>>> dev
+=======
 >>>>>>> dev
     def _parse_current_page_reviews(self) -> List[Dict]:
         """현재 페이지의 리뷰만 파싱"""
@@ -667,6 +715,7 @@ class SmartStoreReviewCollector:
         except Exception as e:
             return False
     
+<<<<<<< HEAD
 <<<<<<< HEAD
     def _debug_review_structure(self):
         """페이지 네비게이션을 통한 리뷰 로딩"""
@@ -835,6 +884,8 @@ class SmartStoreReviewCollector:
                 print(f"\n⚠️  리뷰 로딩 중 오류: {str(e)[:100]}")
                 break
     
+=======
+>>>>>>> dev
 =======
 >>>>>>> dev
     def _parse_reviews(self) -> List[Dict]:
