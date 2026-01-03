@@ -36,6 +36,7 @@
             v-if="msg.role === 'bot' && msg.choices && msg.choices.length > 0 && !msg.answered"
             class="choices"
           >
+            <div class="choices-hint">💡 아래 버튼을 클릭하거나 직접 입력하세요</div>
             <button
               v-for="(choice, idx) in msg.choices"
               :key="idx"
@@ -371,19 +372,15 @@ const initSessionWithReviews = async (reviews) => {
 
 // 선택지 버튼 클릭 처리
 const handleChoiceClick = async (choice, messageIndex) => {
-  // 해당 메시지를 answered 처리하여 버튼 비활성화
-  messages.value[messageIndex].answered = true
+  // 선택지를 입력창에 채우기 (사용자가 수정 가능)
+  userInput.value = choice
   
-  // 선택한 답변을 사용자 메시지로 추가
-  messages.value.push({
-    role: 'user',
-    text: choice
-  })
-  
-  scrollToBottom()
-  
-  // 백엔드로 전송
-  await sendMessageToBackend(choice)
+  // 입력창에 포커스
+  await nextTick()
+  const inputField = document.querySelector('.input-field')
+  if (inputField) {
+    inputField.focus()
+  }
 }
 
 // 사용자 메시지 전송
@@ -398,6 +395,12 @@ const sendUserMessage = async () => {
     role: 'user',
     text: message
   })
+  
+  // 해당 메시지가 선택지 질문에 대한 답변이면 버튼 비활성화
+  const lastBotMessage = [...messages.value].reverse().find(m => m.role === 'bot' && m.choices)
+  if (lastBotMessage && !lastBotMessage.answered) {
+    lastBotMessage.answered = true
+  }
 
   scrollToBottom()
   
@@ -692,6 +695,13 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.choices-hint {
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 0.25rem;
+  font-style: italic;
 }
 
 .choice-button {
