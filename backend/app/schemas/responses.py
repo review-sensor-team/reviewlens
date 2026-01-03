@@ -24,6 +24,10 @@ class ChatResponse(BaseModel):
     llm_context: Optional[Dict] = None
     # 추가: 관련 리뷰 정보
     related_reviews: Optional[Dict] = None  # {factor_key: {count: int, examples: [...]}}
+    # 질문 정보
+    question_id: Optional[str] = None
+    answer_type: Optional[str] = None  # 'no_choice' | 'single_choice'
+    choices: Optional[str] = None  # '예|아니오|잘 모르겠음' 형식
 
 
 class FactorMatch(BaseModel):

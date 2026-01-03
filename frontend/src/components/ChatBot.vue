@@ -24,7 +24,28 @@
         :class="['message', msg.role]"
       >
         <div class="message-content">
+          <!-- 질문 번호 표시 (봇 메시지 && 질문 있을 때) -->
+          <div v-if="msg.role === 'bot' && msg.questionId" class="question-number">
+            💬 질문 {{ msg.questionId }}
+          </div>
+
           <div class="message-text">{{ msg.text }}</div>
+
+          <!-- 선택지 버튼 (single_choice 타입) -->
+          <div
+            v-if="msg.role === 'bot' && msg.choices && msg.choices.length > 0 && !msg.answered"
+            class="choices"
+          >
+            <button
+              v-for="(choice, idx) in msg.choices"
+              :key="idx"
+              @click="handleChoiceClick(choice, index)"
+              class="choice-button"
+              :disabled="isLoading || isCollectingReviews"
+            >
+              {{ choice }}
+            </button>
+          </div>
 
           <!-- 요인 뱃지 표시 (봇 메시지에만) -->
           <div
@@ -177,6 +198,9 @@ const isCollectingReviews = ref(false)
 const reviewsCollected = ref(false)
 const collectedReviewCount = ref(0)
 const waitingForUrl = ref(true) // URL 대기 상태
+
+// 현재 카테고리 (리뷰 수집 시 감지)
+const currentCategory = ref('appliance_heated_humidifier')
 
 /**
  * ✅ 백엔드 응답이 object 형태([{factor_key, score}])든
@@ -345,6 +369,23 @@ const initSessionWithReviews = async (reviews) => {
   }
 }
 
+// 선택지 버튼 클릭 처리
+const handleChoiceClick = async (choice, messageIndex) => {
+  // 해당 메시지를 answered 처리하여 버튼 비활성화
+  messages.value[messageIndex].answered = true
+  
+  // 선택한 답변을 사용자 메시지로 추가
+  messages.value.push({
+    role: 'user',
+    text: choice
+  })
+  
+  scrollToBottom()
+  
+  // 백엔드로 전송
+  await sendMessageToBackend(choice)
+}
+
 // 사용자 메시지 전송
 const sendUserMessage = async () => {
   if (!userInput.value.trim() || isLoading.value || !sessionId.value) return
@@ -359,7 +400,12 @@ const sendUserMessage = async () => {
   })
 
   scrollToBottom()
+  
+  await sendMessageToBackend(message)
+}
 
+// 백엔드로 메시지 전송 (공통 로직)
+const sendMessageToBackend = async (message) => {
   try {
     isLoading.value = true
     const response = await sendMessage(sessionId.value, message)
@@ -375,11 +421,22 @@ const sendUserMessage = async () => {
       finalResult.value = response
     } else {
       // 중간 질문
-      messages.value.push({
+      const botMessage = {
         role: 'bot',
         text: response.bot_message || response.question_text || '다음 질문을 선택해주세요.',
-        factors: response.top_factors
-      })
+        factors: response.top_factors,
+        questionId: response.question_id || null,
+        answerType: response.answer_type || 'no_choice',
+        choices: [],
+        answered: false
+      }
+      
+      // single_choice인 경우 선택지 파싱
+      if (response.answer_type === 'single_choice' && response.choices) {
+        botMessage.choices = response.choices.split('|').map(c => c.trim())
+      }
+      
+      messages.value.push(botMessage)
     }
 
     scrollToBottom()
@@ -615,6 +672,52 @@ onMounted(() => {
 .factor-badge small {
   opacity: 0.8;
   margin-left: 0.25rem;
+}
+
+/* 질문 번호 */
+.question-number {
+  font-size: 0.75rem;
+  color: #667eea;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 0.5rem;
+  display: inline-block;
+}
+
+/* 선택지 버튼 */
+.choices {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.choice-button {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.choice-button:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.choice-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .typing-indicator {

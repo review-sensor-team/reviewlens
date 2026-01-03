@@ -21,6 +21,10 @@ class BotTurn:
     top_factors: List[Tuple[str, float]]
     is_final: bool
     llm_context: Optional[Dict] = None
+    # 질문 정보
+    question_id: Optional[str] = None
+    answer_type: Optional[str] = None  # 'no_choice' | 'single_choice'
+    choices: Optional[str] = None  # '예|아니오|잘 모르겠음' 형식
 
 
 def _jaccard(a: List[str], b: List[str]) -> float:
@@ -124,7 +128,7 @@ class DialogueSession:
             return self._finalize(top_factors)
 
         # 5) 다음 질문 1개 생성(상위요인 중심 + 중복방지)
-        question_text = self._pick_next_question(top_factors)
+        question_text, question_id, answer_type, choices = self._pick_next_question(top_factors)
 
         # 히스토리: assistant
         self.dialogue_history.append({"role": "assistant", "message": question_text})
@@ -133,6 +137,9 @@ class DialogueSession:
             question_text=question_text,
             top_factors=top_factors,
             is_final=False,
+            question_id=question_id,
+            answer_type=answer_type,
+            choices=choices
         )
 
     # ----------------------------- internals -----------------------------

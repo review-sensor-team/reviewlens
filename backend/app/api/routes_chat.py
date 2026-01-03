@@ -84,7 +84,10 @@ async def send_message(request: ChatRequest):
             is_final=bot_turn.is_final,
             top_factors=[{"factor_key": k, "score": s} for k, s in bot_turn.top_factors],
             llm_context=bot_turn.llm_context,
-            related_reviews=related_reviews
+            related_reviews=related_reviews,
+            question_id=bot_turn.question_id,
+            answer_type=bot_turn.answer_type,
+            choices=bot_turn.choices
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
