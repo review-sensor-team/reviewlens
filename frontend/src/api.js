@@ -3,7 +3,7 @@ import config from './config'
 
 const api = axios.create({
   baseURL: config.baseURL,
-  timeout: 30000,
+  timeout: 120000, // 리뷰 수집은 시간이 걸릴 수 있으므로 2분으로 증가
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -55,6 +55,16 @@ export const sendMessage = async (sessionId, message) => {
     message
   })
   return normalizeChatResponse(response.data)
+}
+
+// 리뷰 수집
+export const collectReviews = async (productUrl, maxReviews = 100, sortByLowRating = true) => {
+  const response = await api.post(config.endpoints.collectReviews, {
+    product_url: productUrl,
+    max_reviews: maxReviews,
+    sort_by_low_rating: sortByLowRating
+  })
+  return response.data
 }
 
 export default api

@@ -5,6 +5,7 @@ export default {
   baseURL: API_BASE_URL,
   endpoints: {
     startSession: '/api/chat/start',
-    sendMessage: '/api/chat/message'
+    sendMessage: '/api/chat/message',
+    collectReviews: '/api/chat/collect-reviews'
   }
 }

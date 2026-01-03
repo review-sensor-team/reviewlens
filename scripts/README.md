@@ -366,6 +366,106 @@ with open('backend/data/review/reviews_smartstore_robot_vacuum_everybot_20251229
 - **pandas**: 데이터 처리 및 저장
 - **Chrome/Chromium**: 브라우저 엔진
 
+---
+
+## 기존 리뷰에서 Factor/Question 재생성
+
+### 개요
+
+`reanalyze_existing_reviews.py` 스크립트는 이미 수집된 리뷰 JSON 파일들을 재분석하여 `reg_factor.csv`와 `reg_question.csv`를 생성합니다.
+
+**주요 기능:**
+- ✅ **자동 카테고리 필터링**: 카테고리별로 관련 없는 이슈 자동 제외
+- ✅ **카테고리별 question_id**: 1000단위로 구분 (커피머신: 1000번대, 로봇청소기: 2000번대, ...)
+- ✅ **다양한 질문 생성**: Factor당 2-3개의 서로 다른 각도의 질문
+- ✅ **자동 answer_type 분류**: 예/아니오, 중요도, 자유답변 자동 구분
+- ✅ **영문 factor_key**: 모든 factor_key를 영문으로 자동 생성
+
+### 카테고리별 제외 이슈
+
+각 카테고리에 맞지 않는 이슈들은 자동으로 제외됩니다:
+
+| 카테고리 | 제외되는 이슈 |
+|---------|------------|
+| 커피머신 | (없음) |
+| 로봇청소기 | 거품, 조립 |
+| 이어폰 | 물조절, 거품, 조립, 청소/관리 |
+| 인덕션 | 물조절, 거품, 배터리 |
+| 침구청소기 | 물조절, 거품, 조립 |
+| 가습기 | 거품, 조립, 배터리 |
+| 책장 | 물조절, 거품, 배터리, 소음 |
+| 의자 | 물조절, 거품, 배터리, 청소/관리 |
+| 책상 | 물조절, 거품, 배터리, 소음 |
+| 매트리스 | 물조절, 거품, 배터리, 조립, 청소/관리 |
+
+### 사용법
+
+```bash
+# CSV 헤더 초기화 후 전체 재분석
+echo "factor_key,category,category_name,display_name,description,anchor_terms,context_terms,negation_terms,weight" > backend/data/factor/reg_factor.csv
+echo "question_id,factor_key,question_text,answer_type,choices,next_factor_hint" > backend/data/question/reg_question.csv
+python scripts/reanalyze_existing_reviews.py
+```
+
+### 출력 예시
+
+```
+============================================================
+📊 커피머신 분석
+============================================================
+전체 리뷰: 200건
+별점 3점 이하: 200건
+
+🔍 감지된 이슈:
+  물조절: 100회
+  배송: 95회
+  고장/내구성: 75회
+  ...
+
+✅ 생성된 Factor:
+  ✓ water_control: 물 조절 불가 (100회)
+  ✓ coffee_delivery: 배송 (95회)
+  ...
+
+============================================================
+📊 가습기 분석
+============================================================
+...
+
+⚠️  제외된 이슈 (appliance_heated_humidifier 카테고리와 무관): 거품, 조립, 배터리
+
+✅ 생성된 Factor:
+  ✓ water_capacity: 물통 용량 (145회)
+  ...
+```
+
+### question_id 체계
+
+카테고리별로 1000단위로 question_id가 할당됩니다:
+
+| 카테고리 | question_id 범위 |
+|---------|----------------|
+| 커피머신 (electronics_coffee_machine) | 1001~1999 |
+| 로봇청소기 (robot_cleaner) | 2001~2999 |
+| 이어폰 (electronics_earphone) | 3001~3999 |
+| 인덕션 (appliance_induction) | 4001~4999 |
+| 침구청소기 (appliance_bedding_cleaner) | 5001~5999 |
+| 가습기 (appliance_heated_humidifier) | 6001~6999 |
+| 책장 (furniture_bookshelf) | 7001~7999 |
+| 의자 (furniture_chair) | 8001~8999 |
+| 책상 (furniture_desk) | 9001~9999 |
+| 매트리스 (furniture_mattress) | 10001~10999 |
+
+### answer_type 자동 분류
+
+질문 내용에 따라 answer_type이 자동으로 결정됩니다:
+
+- **single_choice (예|아니오|잘 모르겠음)**: "~하시나요?", "~인가요?", "~있으신가요?" 등
+- **single_choice (매우 중요|보통|상관없음)**: "~중요한가요?", "~필요한가요?" 등
+- **no_choice (자유답변)**: "~계획인가요?", "~원하시는~", "~아니면~" 등
+
+---
+
 ### 추가 리소스
 
 - [Selenium 공식 문서](https://www.selenium.dev/documentation/)
@@ -373,6 +473,21 @@ with open('backend/data/review/reviews_smartstore_robot_vacuum_everybot_20251229
 - [pandas 공식 문서](https://pandas.pydata.org/docs/)
 
 ## 변경 이력
+
+### 2026-01-03
+- ✅ 카테고리별 불필요한 이슈 필터링 로직 추가
+  - 로봇청소기: 거품, 조립 제외
+  - 이어폰: 물조절, 거품, 조립, 청소/관리 제외
+  - 인덕션: 물조절, 거품, 배터리 제외
+  - 침구청소기: 물조절, 거품, 조립 제외
+  - 가습기: 거품, 조립, 배터리 제외
+  - 책장: 물조절, 거품, 배터리, 소음 제외
+  - 의자: 물조절, 거품, 배터리, 청소/관리 제외
+  - 책상: 물조절, 거품, 배터리, 소음 제외
+  - 매트리스: 물조절, 거품, 배터리, 조립, 청소/관리 제외
+- ✅ 카테고리별 1000단위 question_id 체계 적용
+- ✅ 질문 유형별 answer_type 자동 분류 (single_choice, no_choice)
+- ✅ Factor당 2-3개의 다양한 질문 생성
 
 ### 2025-12-29
 - ✅ undetected-chromedriver 도입으로 봇 감지 우회
