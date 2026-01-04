@@ -2,6 +2,7 @@
 """Evidence retrieval: Extract relevant review excerpts"""
 from __future__ import annotations
 
+import logging
 import math
 import re
 from typing import Dict, List, Tuple, Any, Optional
@@ -10,6 +11,8 @@ import pandas as pd
 
 from .ingest import normalize
 from .reg_store import Factor
+
+logger = logging.getLogger("pipeline.retrieval")
 
 
 _SENT_SPLIT_RE = re.compile(r"(?<=[\.!?。！？])\s+|\n+")
@@ -229,15 +232,19 @@ def retrieve_evidence_reviews(
 
     for rank, (factor_key, _) in enumerate(top_factors):
         if len(evidence) >= max_total_evidence:
+            logger.debug(f"  - 최대 evidence 수 도달 ({max_total_evidence}), 중단")
             break
 
         col = f"score_{factor_key}"
         if col not in df.columns:
+            logger.warning(f"  - factor '{factor_key}' 컴럼 없음, 스킵")
             continue
         if factor_key not in factors_map:
+            logger.warning(f"  - factor '{factor_key}' factors_map에 없음, 스킵")
             continue
 
         f = factors_map[factor_key]
+        logger.debug(f"  - [{rank}] {factor_key} 추출 중...")
 
         # rank별 quota
         quota = quota_by_rank.get(rank) or _default_quota_for_rank(rank)
@@ -269,12 +276,17 @@ def retrieve_evidence_reviews(
             norm = (row.get("_norm_text") or "")
             reasons: List[str] = []
 
-            if any(t in norm for t in f.anchor_terms):
+            has_anchor = any(t in norm for t in f.anchor_terms)
+            if has_anchor:
                 reasons.append(f"{factor_key}+anchor")
             if any(t in norm for t in f.context_terms):
                 reasons.append(f"{factor_key}+context")
             if any(t in norm for t in f.negation_terms):
                 reasons.append(f"{factor_key}+negation")
+
+            # ✅ anchor_terms가 없는 리뷰는 증거로 부적합 (context만으로는 부족)
+            if not has_anchor:
+                continue
 
             text = (row.get("text") or "")
             excerpt = extract_relevant_sentences(text, f, max_len=160)

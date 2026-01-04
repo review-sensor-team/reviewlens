@@ -2,12 +2,15 @@
 """Review Sensor: Factor scoring and classification"""
 from __future__ import annotations
 
+import logging
 from typing import Dict, List, Tuple, Any
 
 import pandas as pd
 
 from .ingest import normalize
 from .reg_store import Factor
+
+logger = logging.getLogger("pipeline.sensor")
 
 
 def score_text_against_factor(norm_text: str, factor: Factor) -> Tuple[float, List[str], bool]:
@@ -65,6 +68,7 @@ def compute_review_factor_scores(
     Returns:
         (scored_df, factor_counts)
     """
+    logger.info(f"[Factor 점수 계산 시작] reviews={len(df)}, factors={len(factors)}")
     df = df.copy()
     df["_norm_text"] = df["text"].fillna("").map(normalize)
 
@@ -76,7 +80,9 @@ def compute_review_factor_scores(
     # df["_neg_flags"] = [[] for _ in range(len(df))]  # 필요 시
 
     for factor in factors:
-        col = f"score_{factor.factor_key}"
+        # 컬럼명: factor_id 우선, factor_key는 하위 호환
+        col_id = f"score_f{factor.factor_id}"
+        col_key = f"score_{factor.factor_key}"
         has_neg_col = f"has_neg_{factor.factor_key}"
 
         scores: List[float] = []
@@ -89,15 +95,20 @@ def compute_review_factor_scores(
             scores.append(ws)
             neg_flags.append(has_neg)
 
-        df[col] = pd.Series(scores, index=df.index) * rating_mult
+        score_series = pd.Series(scores, index=df.index) * rating_mult
+        df[col_id] = score_series  # factor_id 기반 컬럼
+        df[col_key] = score_series  # 하위 호환을 위한 factor_key 컬럼
         df[has_neg_col] = neg_flags  # ✅ negation은 별도 플래그로 남김
 
-        factor_counts[factor.factor_key] = int((df[col] > 0).sum())
+        factor_counts[factor.factor_key] = int((score_series > 0).sum())
+    
+    logger.info(f"[Factor 점수 계산 완료] factor_counts={sum(factor_counts.values())} 총 매칭")
+    logger.debug(f"  - 상위 5 factors: {sorted(factor_counts.items(), key=lambda x: x[1], reverse=True)[:5]}")
 
     if compute_top_per_review:
         # ⚠️ 성능 이슈가 있으면 옵션으로 끄세요.
-        score_cols = [f"score_{f.factor_key}" for f in factors if f"score_{f.factor_key}" in df.columns]
-        factor_keys = [f.factor_key for f in factors if f"score_{f.factor_key}" in df.columns]
+        score_cols = [f"score_f{f.factor_id}" for f in factors if f"score_f{f.factor_id}" in df.columns]
+        factor_keys = [f.factor_key for f in factors if f"score_f{f.factor_id}" in df.columns]
 
         top_tags: List[List[str]] = []
         top_scores: List[List[Tuple[str, float]]] = []
@@ -122,6 +133,7 @@ def select_top_factors_from_question(question: str, factors: List[Factor], top_k
 
     NOTE: context_terms까지 확장하면 훨씬 자연스럽게 factor가 잡힘.
     """
+    logger.debug(f"[질문에서 Factor 추출] question={question[:50]}..., top_k={top_k}")
     nq = normalize(question)
     scored: List[Tuple[str, float]] = []
 
@@ -138,9 +150,12 @@ def select_top_factors_from_question(question: str, factors: List[Factor], top_k
     top = [(k, float(s)) for k, s in scored if s > 0][:top_k]
 
     if not top:
+        logger.debug("  - 매칭 실패, weight 상위 factors 사용")
         # fallback: weight 상위
         scored2 = [(f.factor_key, float(f.weight)) for f in factors]
         scored2.sort(key=lambda x: x[1], reverse=True)
         top = scored2[:top_k]
+    
+    logger.debug(f"  - 결과: {[(k, round(s, 2)) for k, s in top]}")
 
     return top

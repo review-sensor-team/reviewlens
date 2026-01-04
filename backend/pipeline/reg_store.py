@@ -14,7 +14,8 @@ from .ingest import normalize
 @dataclass
 class Factor:
     """후회 요인 정의"""
-    factor_key: str
+    factor_id: int
+    factor_key: str  # 하위 호환성을 위해 유지
     anchor_terms: List[str]
     context_terms: List[str]
     negation_terms: List[str]
@@ -93,6 +94,11 @@ def parse_factors(df: pd.DataFrame) -> List[Factor]:
         return [normalize(p) for p in parts if normalize(p)]
 
     for _, row in df.iterrows():
+        # factor_id는 필수
+        factor_id = int(row.get("factor_id", 0))
+        if factor_id <= 0:
+            continue
+        
         key = str(row.get("factor_key") or row.get("key") or "").strip()
         if not key:
             continue
@@ -107,6 +113,7 @@ def parse_factors(df: pd.DataFrame) -> List[Factor]:
 
         factors.append(
             Factor(
+                factor_id=factor_id,
                 factor_key=key,
                 anchor_terms=anchor,
                 context_terms=context,
