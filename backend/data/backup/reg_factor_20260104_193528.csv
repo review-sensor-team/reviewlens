@@ -1,0 +1,82 @@
+﻿factor_key,category,category_name,display_name,description,anchor_terms,context_terms,negation_terms,weight
+water_control,electronics_coffee_machine,커피머신,물 조절 불가,물 추가량을 조절할 수 없어 아쉬운 요인,물|추가|조절|양|못|마음대로,커피|추출|내릴때,가능|조절|자유,1.0
+coffee_delivery,electronics_coffee_machine,커피머신,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+machine_durability,electronics_coffee_machine,커피머신,기계 내구성,고장이 잦거나 내구성에 대한 우려,고장|문제|오류|AS|수리|내구성,사용|개월|년|이후,튼튼|문제없|괜찮,1.3
+coffee_size,electronics_coffee_machine,커피머신,크기/무게,크기/무게에 대한 불만 요인,크기|무게,공간|설치|보관,좋|만족|괜찮|없,1.0
+foam_quality,electronics_coffee_machine,커피머신,거품 품질,크레마 거품이 너무 많거나 적어서 아쉬운 요인,거품|크레마|두껍|많|적,커피|라떼|추출,적당|좋|괜찮,0.8
+machine_noise,electronics_coffee_machine,커피머신,작동 소음,커피 추출 시 소음이 크게 느껴지는 요인,소음|시끄럽|웅웅|돌아가|회전,추출|작동|내릴때,조용|괜찮|작,1.1
+capsule_cost,electronics_coffee_machine,커피머신,캡슐 비용 부담,캡슐 가격이 비싸서 장기적으로 부담되는 요인,캡슐|비용|비싸|가격|비싼|부담,커피|매일|자주|한달,저렴|싸|괜찮,1.4
+cleaning_hassle,electronics_coffee_machine,커피머신,청소 번거로움,캡슐 제거 및 청소가 귀찮게 느껴지는 요인,청소|세척|귀찮|관리|번거로,캡슐|머신|매일,쉽|간편|편하,1.0
+coffee_assembly,electronics_coffee_machine,커피머신,조립,조립에 대한 불만 요인,조립,조립|설치|만들,좋|만족|괜찮|없,1.0
+coffee_odor,electronics_coffee_machine,커피머신,냄새,냄새에 대한 불만 요인,냄새,개봉|사용|작동,좋|만족|괜찮|없,1.0
+coffee_performance,electronics_coffee_machine,커피머신,성능,성능에 대한 불만 요인,성능,사용|효과|기능,좋|만족|괜찮|없,1.0
+operation_noise,robot_cleaner,로봇청소기,작동 소음,작동 시 소음이 크게 느껴지는 요인,소음|시끄럽|웅웅|소리|돌아가,작동|사용|켜면|청소,조용|없|괜찮|작,1.1
+maintenance_burden,robot_cleaner,로봇청소기,청소/관리 부담,청소나 관리가 번거롭게 느껴지는 요인,청소|관리|귀찮|번거로|세척,매일|자주|사용|물때,쉽|간편|편하|쉬움,1.0
+robot_size,robot_cleaner,로봇청소기,크기/무게,크기/무게에 대한 불만 요인,크기|무게,공간|설치|보관,좋|만족|괜찮|없,1.0
+product_durability,robot_cleaner,로봇청소기,제품 내구성,고장이 잦거나 내구성이 걱정되는 요인,고장|문제|오류|AS|수리|망가|안됨,사용|개월|년|이후,튼튼|괜찮|문제없|잘됨,1.4
+battery_runtime,robot_cleaner,로봇청소기,배터리 지속시간,배터리 사용시간이 짧게 느껴지는 요인,배터리|충전|사용시간|방전,청소|작동|한번|시간,오래|충분|길|괜찮,1.1
+cleaning_performance,robot_cleaner,로봇청소기,청소 성능,청소 성능이 기대보다 아쉬운 요인,약하|느리|별로|아쉽|기대|생각보다,성능|효과|청소|흡입,좋|만족|훌륭|충분,1.2
+price_value,robot_cleaner,로봇청소기,가격 대비 가치,가격이나 유지비용이 부담되는 요인,비싸|비용|가격|부담|비싼,구매|유지|한달,저렴|싸|괜찮|합리,1.3
+robot_water_control,robot_cleaner,로봇청소기,물조절,물조절에 대한 불만 요인,물조절,사용|제품,좋|만족|괜찮|없,1.0
+robot_delivery,robot_cleaner,로봇청소기,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+earphone_delivery,electronics_earphone,이어폰,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+anc_quality,electronics_earphone,이어폰,노이즈캔슬링 성능,ANC/소음차단 성능이 기대에 못 미치는 요인,노캔|노이즈|차단|ANC|소음,외부|소리|주변|음,좋|훌륭|잘|만족,1.2
+connection_stability,electronics_earphone,이어폰,연결 안정성,블루투스 연결이 끊기거나 불안정한 요인,연결|끊|블루투스|페어링|튕,연결|기기|폰|아이폰,안정|잘됨|문제없|괜찮,1.4
+price_satisfaction,electronics_earphone,이어폰,가격 만족도,가격이 비싸거나 가성비가 아쉬운 요인,비싸|가격|비용|부담|비싼|가성비,구매|만원|원|돈,저렴|싸|괜찮|합리,1.3
+battery_endurance,electronics_earphone,이어폰,배터리 지속력,배터리 사용시간이 짧게 느껴지는 요인,배터리|충전|시간|방전|오래,사용|하루|시간|케이스,길|오래|충분|만족,1.0
+audio_quality,electronics_earphone,이어폰,음질,음질이나 소리가 기대보다 아쉬운 요인,음질|소리|음|저음|고음|사운드,듣|노래|음악|통화,좋|훌륭|만족|깨끗,1.1
+portability,electronics_earphone,이어폰,휴대성,케이스가 크거나 무거워서 휴대가 불편한 요인,케이스|크|무겁|부피|크기,휴대|가지고|들고|주머니,작|가벼|적당|괜찮,0.8
+induction_assembly,appliance_induction,인덕션,조립,조립에 대한 불만 요인,조립,조립|설치|만들,좋|만족|괜찮|없,1.0
+size_fit,appliance_induction,인덕션,크기/공간,크기가 커서 공간 차지가 부담되는 요인,크|크기|공간|부피|사이즈,주방|설치|공간,작|적당|괜찮,0.8
+surface_cleaning,appliance_induction,인덕션,표면 청소,표면 청소나 관리가 불편한 요인,청소|닦|얼룩|자국,표면|유리|세척,쉽|간편|깨끗,0.9
+cooking_noise,appliance_induction,인덕션,조리 소음,조리 중 소음이 크게 느껴지는 요인,소음|시끄럽|소리|웅웅,조리|작동|사용,조용|괜찮|작,1.0
+reliability,appliance_induction,인덕션,신뢰성,고장이나 오작동 우려가 있는 요인,고장|문제|오류|AS|작동,사용|개월|년,튼튼|문제없|잘됨,1.4
+cost_effectiveness,appliance_induction,인덕션,가성비,가격 대비 성능이나 기능이 아쉬운 요인,비싸|가격|부담|비용|가성비,구매|대비|만원,저렴|싸|합리,1.2
+heating_power,appliance_induction,인덕션,화력,화력이나 조리 성능이 아쉬운 요인,약하|느리|화력|별로|아쉽,조리|요리|끓|불,강함|좋|빠름,1.3
+induction_delivery,appliance_induction,인덕션,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+vacuum_noise,appliance_bedding_cleaner,침구청소기,흡입 소음,작동 시 소음이 크게 느껴지는 요인,소음|시끄럽|소리|웅웅,작동|청소|사용,조용|괜찮|작,1.1
+build_quality,appliance_bedding_cleaner,침구청소기,내구성,고장이나 파손 우려가 있는 요인,고장|문제|망가|AS,사용|개월|년,튼튼|문제없|잘됨,1.3
+filter_maintenance,appliance_bedding_cleaner,침구청소기,필터 관리,필터 청소나 교체가 번거로운 요인,청소|필터|교체|귀찮,필터|관리|세척,쉽|간편|편하,1.0
+bedding_odor,appliance_bedding_cleaner,침구청소기,냄새,냄새에 대한 불만 요인,냄새,개봉|사용|작동,좋|만족|괜찮|없,1.0
+weight_handling,appliance_bedding_cleaner,침구청소기,무게/사용감,무겁거나 사용이 불편한 요인,무겁|크|무게|힘들,사용|들고|청소,가벼|적당|편함,1.1
+bedding_delivery,appliance_bedding_cleaner,침구청소기,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+suction_power,appliance_bedding_cleaner,침구청소기,흡입력,흡입력이나 청소 성능이 아쉬운 요인,약하|별로|아쉽|흡입|성능,청소|먼지|진드기,강함|좋|만족,1.3
+value_for_money,appliance_bedding_cleaner,침구청소기,가격 대비 만족도,가격에 비해 성능이 아쉬운 요인,비싸|가격|부담|비용,구매|만원|원,저렴|싸|합리,1.2
+water_capacity,appliance_heated_humidifier,가습기,물통 용량,물통이 작아서 자주 보충해야 하는 요인,물|작|용량|자주|보충,물통|리터|용량,크|충분|많,0.9
+water_maintenance,appliance_heated_humidifier,가습기,물통 관리,물 보충·세척·석회 관리가 귀찮게 느껴지는 요인,청소|관리|석회|물때|귀찮,매일|자주|사용,쉽|간편|편하,1.1
+humidifier_size,appliance_heated_humidifier,가습기,크기/무게,크기/무게에 대한 불만 요인,크기|무게,공간|설치|보관,좋|만족|괜찮|없,1.0
+sleep_disturbance,appliance_heated_humidifier,가습기,수면 방해,밤이나 수면 중 사용 시 소음·빛으로 불편함을 느끼는 요인,소음|시끄럽|웅웅|눈부시|빛|LED,수면|밤|잠|취침|새벽,없|안|조용|괜찮,1.2
+humidifier_durability,appliance_heated_humidifier,가습기,고장/내구성,고장/내구성에 대한 불만 요인,고장|내구성,사용|개월|년,좋|만족|괜찮|없,1.0
+humidity_output,appliance_heated_humidifier,가습기,가습량,가격이나 기대에 비해 가습 성능이 아쉬운 요인,기대|생각보다|별로|아쉽|적,가습|습도|수증기,만족|좋|괜찮|충분,1.3
+odor_issue,appliance_heated_humidifier,가습기,냄새 문제,사용 중 불쾌한 냄새가 나는 요인,냄새|악취|향|곰팡이,사용|작동|물,없|괜찮,1.0
+humidifier_delivery,appliance_heated_humidifier,가습기,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+price_performance,appliance_heated_humidifier,가습기,가격 대비 성능,가격에 비해 성능이나 기능이 아쉬운 요인,비싸|가격|부담|비용,구매|만원|원,저렴|싸|합리,1.2
+assembly_difficulty,furniture_bookshelf,책장,조립 난이도,조립이 어렵거나 복잡한 요인,조립|어렵|복잡|설명서|힘들,조립|설치|만들,쉽|간단|편함,1.3
+delivery_damage,furniture_bookshelf,책장,배송 상태,배송 중 파손이나 포장 불량 요인,배송|택배|포장|파손|깨짐,도착|받|포장,완벽|괜찮|안전,1.1
+storage_capacity,furniture_bookshelf,책장,수납 용량,수납 공간이나 칸 구성이 아쉬운 요인,작|좁|적|칸|공간,수납|책|물건,넓|크|충분,1.0
+bookshelf_odor,furniture_bookshelf,책장,냄새,냄새에 대한 불만 요인,냄새,개봉|사용|작동,좋|만족|괜찮|없,1.0
+structural_stability,furniture_bookshelf,책장,구조 안정성,흔들림이나 내구성이 걱정되는 요인,흔들|불안|튼튼|약|삐걱,사용|책|무게,튼튼|안정|괜찮,1.4
+space_fit,furniture_bookshelf,책장,공간 활용,크기가 예상과 다르거나 공간 활용이 아쉬운 요인,크|작|크기|공간|높이,설치|공간|방,적당|괜찮|딱,1.1
+bookshelf_maintenance,furniture_bookshelf,책장,청소/관리,청소/관리에 대한 불만 요인,청소|관리,청소|세척|관리,좋|만족|괜찮|없,1.0
+quality_price_ratio,furniture_bookshelf,책장,품질 대비 가격,가격 대비 품질이나 디자인이 아쉬운 요인,비싸|가격|부담|저렴,구매|만원|원,저렴|싸|합리,1.0
+chair_delivery,furniture_chair,의자,배송,배송에 대한 불만 요인,배송,도착|포장|배송,좋|만족|괜찮|없,1.0
+sitting_comfort,furniture_chair,의자,착좌감,앉았을 때 편안함이나 쿠션감이 아쉬운 요인,불편|아프|딱딱|쿠션|푹신,앉|사용|시간,편함|좋|푹신,1.4
+chair_value,furniture_chair,의자,가격 만족도,가격 대비 품질이나 기능이 아쉬운 요인,비싸|가격|부담|비용,구매|만원|원,저렴|싸|합리,1.2
+chair_durability,furniture_chair,의자,의자 내구성,의자가 삐걱거리거나 파손 우려가 있는 요인,삐걱|흔들|고장|망가|약,사용|개월|년,튼튼|안정|괜찮,1.3
+chair_size,furniture_chair,의자,크기/체형,의자 크기가 체형에 맞지 않는 요인,크|작|높이|폭|맞,앉|체형|키,적당|딱|괜찮,1.2
+chair_assembly,furniture_chair,의자,조립 편의성,조립이 어렵거나 시간이 오래 걸리는 요인,조립|어렵|복잡|설명서,조립|설치|만들,쉽|간단|빠름,1.1
+chair_noise,furniture_chair,의자,의자 소음,움직일 때 삐걱거림이나 소음이 나는 요인,삐걱|소리|소음|시끄,앉|움직|회전,조용|없|괜찮,1.0
+desk_assembly,furniture_desk,책상,조립 복잡도,조립이 어렵거나 시간이 많이 소요되는 요인,조립|어렵|복잡|힘들|설명서,조립|설치|만들,쉽|간단|빠름,1.3
+desk_delivery,furniture_desk,책상,배송/포장,배송 중 파손이나 포장 불량 요인,배송|택배|포장|파손|깨짐,도착|받|배송,완벽|괜찮|안전,1.0
+desk_dimensions,furniture_desk,책상,크기/공간,크기가 예상과 다르거나 공간 활용이 아쉬운 요인,크|작|크기|넓이|높이,공간|방|설치,적당|딱|괜찮,1.2
+desk_functionality,furniture_desk,책상,기능성,수납이나 높이 조절 등 기능이 아쉬운 요인,수납|칸|조절|높이|기능,사용|작업|공부,편함|좋|충분,1.1
+desk_stability,furniture_desk,책상,책상 안정성,흔들림이나 내구성이 걱정되는 요인,흔들|불안|약|삐걱|튼튼,사용|무게|책,튼튼|안정|괜찮,1.4
+desk_price,furniture_desk,책상,가격 대비 품질,가격 대비 품질이나 디자인이 아쉬운 요인,비싸|가격|부담|비용,구매|만원|원,저렴|싸|합리,1.2
+desk_maintenance,furniture_desk,책상,청소/관리,청소/관리에 대한 불만 요인,청소|관리,청소|세척|관리,좋|만족|괜찮|없,1.0
+desk_odor,furniture_desk,책상,냄새,냄새에 대한 불만 요인,냄새,개봉|사용|작동,좋|만족|괜찮|없,1.0
+mattress_packaging,furniture_mattress,매트리스,압축/배송,압축 배송 후 복원이 느리거나 문제가 있는 요인,압축|복원|펴짐|배송,개봉|도착|배송,빠름|잘|완벽,0.9
+mattress_value,furniture_mattress,매트리스,가성비,가격 대비 품질이나 수명이 아쉬운 요인,비싸|가격|부담|비용,구매|만원|원,저렴|싸|합리,1.1
+mattress_firmness,furniture_mattress,매트리스,쿠션감/단단함,매트리스가 너무 딱딱하거나 푹신한 요인,딱딱|푹신|쿠션|단단|부드럽,누움|잠|수면,적당|좋|괜찮,1.4
+mattress_thickness,furniture_mattress,매트리스,두께/높이,두께가 예상보다 얇거나 두꺼운 요인,얇|두껍|두께|높이,매트|높이|침대,적당|괜찮|딱,1.0
+mattress_sagging,furniture_mattress,매트리스,처짐/내구성,사용 후 처지거나 내구성이 걱정되는 요인,처짐|꺼짐|내구|푹|변형,사용|개월|년,튼튼|괜찮|유지,1.3
+mattress_odor,furniture_mattress,매트리스,신제품 냄새,개봉 후 화학 냄새가 오래 지속되는 요인,냄새|악취|향|화학|페인트,개봉|처음|신품,없|괜찮|사라짐,1.2
