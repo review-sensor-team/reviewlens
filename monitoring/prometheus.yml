@@ -1,0 +1,41 @@
+# Prometheus 설정 파일
+global:
+  scrape_interval: 15s  # 15초마다 메트릭 수집
+  evaluation_interval: 15s  # 15초마다 규칙 평가
+  external_labels:
+    monitor: 'reviewlens-monitor'
+    environment: 'development'
+
+# Alertmanager 설정 (선택사항)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# 규칙 파일 (선택사항)
+# rule_files:
+#   - "alerts/*.yml"
+
+# 스크랩 대상 설정
+scrape_configs:
+  # Prometheus 자체 모니터링
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ReviewLens 백엔드 API
+  - job_name: 'reviewlens-backend'
+    scrape_interval: 10s  # 백엔드는 더 자주 수집
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['localhost:8000']  # 로컬 바이너리 실행
+        labels:
+          service: 'reviewlens-api'
+          env: 'dev'
+    
+    # 메트릭 재라벨링 (선택사항)
+    metric_relabel_configs:
+      # 불필요한 메트릭 제외 예시
+      - source_labels: [__name__]
+        regex: 'go_.*'
+        action: drop
