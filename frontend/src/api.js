@@ -37,6 +37,11 @@ function normalizeChatResponse(data) {
     bot_message,
     top_factors,
     llm_context: d.llm_context ?? null,
+    related_reviews: d.related_reviews ?? null,  // ✅ 추가
+    question_text: d.question_text ?? bot_message,  // ✅ 추가
+    question_id: d.question_id ?? null,  // ✅ 추가
+    answer_type: d.answer_type ?? null,  // ✅ 추가
+    choices: d.choices ?? null,  // ✅ 추가
     _raw: d
   }
 }
@@ -58,12 +63,19 @@ export const sendMessage = async (sessionId, message) => {
 }
 
 // 리뷰 수집
-export const collectReviews = async (productUrl, maxReviews = 100, sortByLowRating = true) => {
-  const response = await api.post(config.endpoints.collectReviews, {
+export const collectReviews = async (productUrl, maxReviews = 100, sortByLowRating = true, category = null) => {
+  const payload = {
     product_url: productUrl,
     max_reviews: maxReviews,
     sort_by_low_rating: sortByLowRating
-  })
+  }
+  
+  // category가 지정되면 추가
+  if (category) {
+    payload.category = category
+  }
+  
+  const response = await api.post(config.endpoints.collectReviews, payload)
   return response.data
 }
 
