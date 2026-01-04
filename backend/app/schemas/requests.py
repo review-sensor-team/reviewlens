@@ -1,5 +1,6 @@
 """Request schemas"""
 from pydantic import BaseModel
+from typing import Optional
 
 
 class SessionStartRequest(BaseModel):
@@ -18,9 +19,4 @@ class CollectReviewsRequest(BaseModel):
     product_url: str
     max_reviews: int = 100
     sort_by_low_rating: bool = True
-
-
-class StartWithReviewsRequest(BaseModel):
-    """리뷰 데이터와 함께 세션 시작 요청"""
-    session_id: str
-    reviews: list
+    category: Optional[str] = None  # 사용자가 카테고리를 직접 지정할 수 있음
