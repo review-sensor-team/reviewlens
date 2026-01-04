@@ -1,0 +1,23 @@
+[Unit]
+Description=ReviewLens API Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/reviewlens/backend
+Environment="PATH=/opt/reviewlens/venv/bin"
+ExecStart=/opt/reviewlens/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+# 로그
+StandardOutput=append:/var/log/reviewlens/api.log
+StandardError=append:/var/log/reviewlens/api.error.log
+
+# 보안
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
