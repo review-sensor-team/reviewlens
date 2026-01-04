@@ -1,9 +1,12 @@
 """네이버 스마트스토어 리뷰 수집 모듈"""
+import logging
 import re
 import time
 import hashlib
 from typing import List, Dict, Optional
 from datetime import datetime
+
+logger = logging.getLogger("collector.smartstore")
 
 try:
     from selenium import webdriver
@@ -46,8 +49,10 @@ class SmartStoreCollector:
         if not SELENIUM_AVAILABLE:
             raise ImportError("Selenium과 webdriver-manager가 필요합니다: pip install selenium webdriver-manager")
         
+        logger.info(f"[SmartStoreCollector 초기화] url={product_url}, headless={headless}")
         self.product_url = product_url
         self.product_id = self._extract_product_id(product_url)
+        logger.debug(f"  - product_id={self.product_id}")
         self.driver = None
         self.headless = headless
         
@@ -62,16 +67,21 @@ class SmartStoreCollector:
         """Chrome 드라이버 초기화"""
         if self.driver:
             return
-            
+        
+        logger.debug("[드라이버 초기화 시작]")
         is_brand_naver = 'brand.naver.com' in self.product_url
         
         if is_brand_naver:
+            logger.debug("  - brand.naver.com 감지, Selenium 드라이버 사용")
             self.driver = self._init_selenium_driver(self.headless)
         else:
             if UC_AVAILABLE:
+                logger.debug("  - undetected-chromedriver 사용")
                 self.driver = self._init_uc_driver()
             else:
+                logger.debug("  - Selenium 드라이버 사용")
                 self.driver = self._init_selenium_driver(self.headless)
+        logger.debug("[드라이버 초기화 완료]")
     
     def _init_selenium_driver(self, headless: bool):
         """일반 Selenium WebDriver 초기화"""
@@ -125,7 +135,7 @@ class SmartStoreCollector:
         
         return driver
     
-    def collect_reviews(self, max_reviews: int = 100, sort_by_low_rating: bool = True) -> List[Dict]:
+    def collect_reviews(self, max_reviews: int = 100, sort_by_low_rating: bool = True) -> tuple:
         """
         리뷰 수집
         
@@ -134,14 +144,24 @@ class SmartStoreCollector:
             sort_by_low_rating: 별점 낮은순 정렬 여부
             
         Returns:
-            리뷰 목록
+            (리뷰 목록, 페이지 제목) 튜플
         """
+        logger.info(f"[리뷰 수집 시작] max={max_reviews}, sort_by_low_rating={sort_by_low_rating}")
+        page_title = None
         try:
             self._init_driver()
             
+            logger.debug(f"페이지 로딩: {self.product_url}")
             print(f"페이지 로딩: {self.product_url}")
             self.driver.get(self.product_url)
             time.sleep(3)
+            
+            # 페이지 제목 가져오기
+            try:
+                page_title = self.driver.title
+                logger.info(f"[페이지 제목 수집] {page_title}")
+            except Exception as e:
+                logger.warning(f"[페이지 제목 가져오기 실패] {e}")
             
             # 리뷰 탭으로 이동
             self._navigate_to_review_tab()
@@ -155,13 +175,13 @@ class SmartStoreCollector:
             reviews = self._collect_reviews_from_pages(max_reviews)
             
             print(f"\n✓ 총 {len(reviews)}개의 리뷰를 수집했습니다.")
-            return reviews
+            return reviews, page_title
             
         except Exception as e:
             print(f"❌ 리뷰 수집 중 오류: {e}")
             import traceback
             traceback.print_exc()
-            return []
+            return [], page_title
         finally:
             if self.driver:
                 self.driver.quit()
@@ -329,19 +349,31 @@ class SmartStoreCollector:
         visited_pages = set()
         current_page_num = 1
         
+        logger.info(f"[페이지 수집 시작] max_reviews={max_reviews}")
+        
         while True:
+            logger.debug(f"[페이지 {current_page_num}] 파싱 시작...")
             page_reviews = self._parse_current_page_reviews()
             
             if page_reviews:
                 all_reviews.extend(page_reviews)
                 print(f"\r페이지 {current_page_num}: +{len(page_reviews)}개 (총 {len(all_reviews)}개)", end="", flush=True)
+                logger.info(f"[페이지 {current_page_num}] +{len(page_reviews)}개 수집 (누적: {len(all_reviews)}개)")
+            else:
+                logger.warning(f"[페이지 {current_page_num}] 리뷰 없음")
             
             if max_reviews and len(all_reviews) >= max_reviews:
                 print(f"\n✓ 목표 리뷰 수({max_reviews})에 도달했습니다.")
+                logger.info(f"[수집 완료] 목표 도달: {len(all_reviews)}개")
                 return all_reviews[:max_reviews]
             
-            if not self._goto_next_page(visited_pages):
+            logger.debug(f"[페이지 {current_page_num}] 다음 페이지로 이동 시도...")
+            next_page_found = self._goto_next_page(visited_pages)
+            logger.debug(f"[페이지 {current_page_num}] 다음 페이지 존재: {next_page_found}")
+            
+            if not next_page_found:
                 print(f"\n✓ 모든 페이지 수집 완료 (총 {len(all_reviews)}개)")
+                logger.info(f"[수집 완료] 더 이상 페이지 없음: {len(all_reviews)}개")
                 break
             
             current_page_num += 1
@@ -382,16 +414,43 @@ class SmartStoreCollector:
     def _goto_next_page(self, visited_pages: set) -> bool:
         """다음 페이지로 이동"""
         try:
-            try:
-                current_page_elem = self.driver.find_element(
-                    By.CSS_SELECTOR, 
-                    "a[role='menuitem'][aria-current='true']"
-                )
-                current_page = current_page_elem.text.strip()
-                visited_pages.add(current_page)
-            except:
-                pass
+            logger.debug("[다음 페이지 이동] 시작")
             
+            # 현재 페이지 번호 파악 - 전체 페이지 링크에서 찾기
+            try:
+                # 페이지네이션의 모든 링크 확인
+                all_page_links = self.driver.find_elements(By.CSS_SELECTOR, "a[role='menuitem']")
+                current_page = None
+                
+                for link in all_page_links:
+                    aria_current = link.get_attribute('aria-current')
+                    text_content = link.text.strip()
+                    
+                    # aria-current='true'이면서 숫자인 경우
+                    if aria_current == 'true' and text_content.isdigit():
+                        current_page = text_content
+                        break
+                
+                # 못 찾으면 다른 방법 시도 - disabled 또는 active 클래스
+                if not current_page:
+                    for link in all_page_links:
+                        text_content = link.text.strip()
+                        if text_content.isdigit():
+                            # 클래스에 active, current, selected 등이 있는지 확인
+                            class_attr = link.get_attribute('class') or ''
+                            if 'active' in class_attr.lower() or 'current' in class_attr.lower() or 'selected' in class_attr.lower():
+                                current_page = text_content
+                                break
+                
+                if current_page:
+                    visited_pages.add(current_page)
+                    logger.debug(f"  - 현재 페이지 확정: {current_page}")
+                else:
+                    logger.warning(f"  ⚠️  현재 페이지 번호를 찾지 못했습니다")
+            except Exception as e:
+                logger.debug(f"  - 현재 페이지 번호 감지 실패: {e}")
+            
+            # 페이지네이션 div 찾기
             pagination_selectors = [
                 "div[role='menubar']",
                 "div.w2_v0Jq7tg",
@@ -402,13 +461,16 @@ class SmartStoreCollector:
             for selector in pagination_selectors:
                 try:
                     pagination_div = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    logger.debug(f"  - 페이지네이션 div 발견: {selector}")
                     break
                 except:
                     continue
             
             if not pagination_div:
+                logger.warning("  ✗ 페이지네이션 div를 찾을 수 없습니다")
                 return False
             
+            # 페이지 링크 찾기
             page_link_selectors = [
                 "a.F0MhmLrV2F[aria-current='false']",
                 "a[role='menuitem'][aria-current='false']",
@@ -418,17 +480,41 @@ class SmartStoreCollector:
             for selector in page_link_selectors:
                 page_links = pagination_div.find_elements(By.CSS_SELECTOR, selector)
                 if page_links:
+                    logger.debug(f"  - 페이지 링크 {len(page_links)}개 발견: {selector}")
                     break
             
+            # 방문하지 않은 페이지 링크 클릭
             if page_links:
                 for link in page_links:
-                    page_num = link.text.strip()
-                    if page_num.isdigit() and page_num not in visited_pages:
+                    # aria-label과 text 모두 확인
+                    aria_label = link.get_attribute('aria-label')
+                    text_content = link.text.strip()
+                    
+                    # 페이지 번호 추출
+                    page_num = None
+                    if aria_label:
+                        import re
+                        numbers = re.findall(r'\d+', aria_label)
+                        if numbers and len(numbers[0]) <= 3:
+                            page_num = numbers[0]
+                    
+                    if not page_num and text_content.isdigit():
+                        page_num = text_content
+                    
+                    logger.debug(f"  - 링크 확인: aria-label='{aria_label}', text='{text_content}', 추출된 페이지={page_num}, 방문여부: {page_num in visited_pages if page_num else 'Unknown'}")
+                    
+                    if page_num and page_num not in visited_pages:
+                        logger.info(f"  ✓ 페이지 {page_num}로 이동")
                         self.driver.execute_script("arguments[0].scrollIntoView(true);", link)
                         time.sleep(0.3)
                         self.driver.execute_script("arguments[0].click();", link)
                         return True
+                logger.debug(f"  - 모든 페이지 링크 방문 완료 (총 {len(page_links)}개)")
+            else:
+                logger.debug("  - 페이지 링크 없음")
             
+            # 다음 버튼 찾기
+            logger.debug("  - '다음' 버튼 검색 중...")
             next_button_selectors = [
                 "//a[contains(text(), '다음') and @aria-hidden='false']",
                 "//a[contains(@class, 'jFLfdWHAWX') and not(@aria-hidden='true')]",
@@ -438,16 +524,19 @@ class SmartStoreCollector:
                 try:
                     button = self.driver.find_element(By.XPATH, selector)
                     if button.is_displayed():
+                        logger.info(f"  ✓ '다음' 버튼 클릭: {selector}")
                         self.driver.execute_script("arguments[0].scrollIntoView(true);", button)
                         time.sleep(0.3)
                         self.driver.execute_script("arguments[0].click();", button)
                         return True
-                except:
-                    continue
+                except Exception as e:
+                    logger.debug(f"  - '다음' 버튼 시도 실패 ({selector}): {str(e)[:100]}")
             
+            logger.warning("  ✗ 더 이상 다음 페이지가 없습니다")
             return False
             
         except Exception as e:
+            logger.error(f"  ✗ 페이지 이동 중 오류: {e}")
             return False
     
     def _parse_review_element(self, element) -> Dict:
