@@ -24,6 +24,18 @@ class Factor:
     display_name: str = ""
 
 
+@dataclass
+class Question:
+    """질문 정의"""
+    question_id: int
+    factor_id: int
+    factor_key: str
+    question_text: str
+    answer_type: str  # 'no_choice' | 'single_choice'
+    choices: str
+    next_factor_hint: str
+
+
 def load_csvs(data_dir: Path) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """REG CSV 파일들 로드"""
     def find_file(root: Path, name: str) -> Path:
@@ -125,3 +137,50 @@ def parse_factors(df: pd.DataFrame) -> List[Factor]:
         )
 
     return factors
+
+
+def parse_questions(df: pd.DataFrame) -> List[Question]:
+    """질문 정의 CSV를 Question 객체 리스트로 변환"""
+    questions: List[Question] = []
+
+    def safe_int(v: str, default: int = 0) -> int:
+        try:
+            s = str(v).strip()
+            return int(s) if s else default
+        except Exception:
+            return default
+
+    for _, row in df.iterrows():
+        # question_id는 필수
+        question_id = safe_int(row.get("question_id", 0))
+        if question_id <= 0:
+            continue
+        
+        # factor_id는 필수
+        factor_id = safe_int(row.get("factor_id", 0))
+        if factor_id <= 0:
+            continue
+        
+        # question_text는 필수
+        question_text = str(row.get("question_text") or "").strip()
+        if not question_text:
+            continue
+
+        factor_key = str(row.get("factor_key") or "").strip()
+        answer_type = str(row.get("answer_type") or "no_choice").strip()
+        choices = str(row.get("choices") or "").strip()
+        next_factor_hint = str(row.get("next_factor_hint") or "").strip()
+
+        questions.append(
+            Question(
+                question_id=question_id,
+                factor_id=factor_id,
+                factor_key=factor_key,
+                question_text=question_text,
+                answer_type=answer_type,
+                choices=choices,
+                next_factor_hint=next_factor_hint,
+            )
+        )
+
+    return questions
