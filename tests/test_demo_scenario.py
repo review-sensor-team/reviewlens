@@ -29,15 +29,13 @@ def test_demo_3to5_turns():
 
         # if not final, question should exist
         if not bot_turn.is_final:
-            # collect candidate questions from questions_df for top_factors
+            # collect candidate questions from session.questions for top_factors
             candidates = set()
             for fk, _ in bot_turn.top_factors:
-                matches = session.questions_df[session.questions_df['factor_key'] == fk]
-                for rec in matches.to_dict(orient="records"):
-                    # question_text 또는 question 컬럼 확인
-                    q_text = rec.get("question_text") or rec.get("question") or ""
-                    if q_text:
-                        candidates.add(str(q_text))
+                # factor_key로 매칭되는 질문 찾기
+                matches = [q for q in session.questions if q.factor_key == fk]
+                for question in matches:
+                    candidates.add(question.question_text)
             
             # 질문이 있어야 함
             assert bot_turn.question_text is not None

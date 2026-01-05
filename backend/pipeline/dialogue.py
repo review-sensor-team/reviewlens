@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import pandas as pd
 
-from .reg_store import Factor, load_csvs, parse_factors
+from .reg_store import Factor, Question, load_csvs, parse_factors, parse_questions
 from .sensor import compute_review_factor_scores
 from .ingest import normalize
 from .retrieval import retrieve_evidence_reviews
@@ -78,21 +78,25 @@ class DialogueSession:
         if reviews_df is not None:
             # 외부에서 제공한 리뷰 사용 (세션별 수집 리뷰)
             self.reviews_df = reviews_df
-            _, self.factors_df, self.questions_df = load_csvs(self.data_dir)
-            logger.debug(f"  - reviews: {len(self.reviews_df)}건 (세션 데이터), factors: {len(self.factors_df)}건, questions: {len(self.questions_df)}건")
+            _, factors_df, questions_df = load_csvs(self.data_dir)
+            logger.debug(f"  - reviews: {len(self.reviews_df)}건 (세션 데이터), factors: {len(factors_df)}건, questions: {len(questions_df)}건")
         else:
             # CSV에서 로드 (기본 동작, 테스트용)
-            self.reviews_df, self.factors_df, self.questions_df = load_csvs(self.data_dir)
-            logger.debug(f"  - reviews: {len(self.reviews_df)}건 (CSV), factors: {len(self.factors_df)}건, questions: {len(self.questions_df)}건")
+            self.reviews_df, factors_df, questions_df = load_csvs(self.data_dir)
+            logger.debug(f"  - reviews: {len(self.reviews_df)}건 (CSV), factors: {len(factors_df)}건, questions: {len(questions_df)}건")
+        
+        # Parse questions
+        self.questions = parse_questions(questions_df)
         
         # 모든 factor 파싱 후 현재 카테고리만 필터링
-        all_factors = parse_factors(self.factors_df)
+        all_factors = parse_factors(factors_df)
         self.factors = [f for f in all_factors if f.category == self.category]
         
         # factor_id와 factor_key 모두로 인덱싱 (하위 호환성)
         self.factors_map = {f.factor_key: f for f in self.factors}
         self.factors_by_id = {f.factor_id: f for f in self.factors}
         logger.info(f"  - 전체 factors: {len(all_factors)}개 → 카테고리 '{self.category}' 필터링: {len(self.factors)}개")
+        logger.info(f"  - 전체 questions: {len(self.questions)}개")
 
         # category slug 추출(빈 값이면 fallback)
         self.category_slug = category
@@ -100,21 +104,6 @@ class DialogueSession:
             if getattr(f, "category", "").strip():
                 self.category_slug = f.category.strip()
                 break
-
-        # 질문 DF 컬럼 유연화(한 번만 결정) - factor_id 우선
-        self.q_key_col = None
-        for c in ["factor_id", "factor_key", "factor", "key"]:
-            if c in self.questions_df.columns:
-                self.q_key_col = c
-                break
-
-        self.q_text_col = None
-        for c in ["question_text", "question", "text"]:
-            if c in self.questions_df.columns:
-                self.q_text_col = c
-                break
-
-        self.q_prio_col = "priority" if "priority" in self.questions_df.columns else None
 
     # ----------------------------- public -----------------------------
 
@@ -211,73 +200,53 @@ class DialogueSession:
         Returns:
             (question_text, question_id, answer_type, choices)
         """
-        # 질문 테이블이 없으면 기본 질문
-        if self.questions_df is None or self.questions_df.empty or not self.q_key_col or not self.q_text_col:
+        # 질문 리스트가 없으면 기본 질문
+        if not self.questions:
             return self._fallback_question()
 
-        # “집중 수렴” 전략:
+        # "집중 수렴" 전략:
         # - turn 1~2: top2까지 후보
         # - turn 3부터: top1에 더 집중
         focus = 2 if self.turn_count <= 2 else 1
         focus_factors = [k for k, _ in top_factors[:focus]]
 
-        candidates: List[Tuple[int, str, Optional[str], Optional[str], Optional[str]]] = []  # (prio, q_text, q_id, answer_type, choices)
+        candidates: List[Tuple[int, str, str, str, Optional[List[str]]]] = []  # (prio, q_text, q_id, answer_type, choices)
         for factor_key in focus_factors:
             # factor_key로 Factor 객체 찾기
             factor_obj = self.factors_map.get(factor_key)
             if not factor_obj:
                 continue
             
-            # q_key_col이 factor_id면 factor_id로, 아니면 factor_key로 매칭
-            if self.q_key_col == "factor_id":
-                search_value = factor_obj.factor_id
-            else:
-                search_value = factor_key
-            
-            matches = self.questions_df[self.questions_df[self.q_key_col] == search_value]
-
-            # 부분일치(예: noise_sleep vs noise) - factor_key 기반
-            if len(matches) == 0 and self.q_key_col != "factor_id":
-                prefix = factor_key.split("_")[0]
-                matches = self.questions_df[self.questions_df[self.q_key_col].astype(str).str.contains(prefix, na=False)]
-
-            if len(matches) == 0:
-                continue
-
-            for rec in matches.to_dict(orient="records"):
-                q_text = str(rec.get(self.q_text_col) or "").strip()
-                if not q_text:
-                    continue
-                if q_text in self.asked_questions:
-                    continue
-
-                prio = 999
-                if self.q_prio_col:
-                    try:
-                        prio = int(rec.get(self.q_prio_col) or 999)
-                    except Exception:
-                        prio = 999
-
-                # 질문 메타데이터 추출
-                q_id = str(rec.get("question_id", "")) or None
-                answer_type = str(rec.get("answer_type", "")) or None
-                choices_raw = str(rec.get("choices", "")) or None
+            # factor_id로 매칭되는 질문들 찾기
+            for question in self.questions:
+                # factor_id로 매칭
+                if question.factor_id != factor_obj.factor_id:
+                    # 부분일치(예: noise_sleep vs noise) - factor_key 기반
+                    prefix = factor_key.split("_")[0]
+                    if not question.factor_key.startswith(prefix):
+                        continue
                 
-                candidates.append((prio, q_text, q_id, answer_type, choices_raw))
+                # 이미 물어본 질문은 제외
+                if question.question_text in self.asked_questions:
+                    continue
+
+                # question_id를 우선순위로 사용 (낮은 숫자가 우선)
+                prio = question.question_id
+                
+                # choices 파싱
+                choices = None
+                if question.choices and question.answer_type in ["single_choice", "multiple_choice"]:
+                    choices = [c.strip() for c in question.choices.split("|") if c.strip()]
+                
+                candidates.append((prio, question.question_text, str(question.question_id), question.answer_type, choices))
 
         # 우선순위 낮은 숫자 먼저
         candidates.sort(key=lambda x: x[0])
 
         if candidates:
-            _, picked_text, picked_id, picked_type, picked_choices_raw = candidates[0]
+            _, picked_text, picked_id, picked_type, picked_choices = candidates[0]
             self.asked_questions.add(picked_text)
-            
-            # choices 파싱
-            choices = None
-            if picked_choices_raw and picked_type in ["single_choice", "multiple_choice"]:
-                choices = [c.strip() for c in picked_choices_raw.split("|") if c.strip()]
-            
-            return picked_text, picked_id, picked_type, choices
+            return picked_text, picked_id, picked_type, picked_choices
 
         return self._fallback_question()
 

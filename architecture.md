@@ -126,7 +126,9 @@ sequenceDiagram
     participant Web as Smartstore 웹페이지
     participant File as review.json
     participant Analyzer as analyze_product_reviews.py
-    participant CSV as factors.csv
+    participant FactorCSV as factors.csv
+    participant QuestionGen as Question Generator
+    participant QuestionCSV as questions.csv
     
     User->>Script: python collect_smartstore_reviews.py
     Script->>Browser: Chrome WebDriver 초기화
@@ -142,8 +144,14 @@ sequenceDiagram
     User->>Analyzer: python analyze_product_reviews.py
     Analyzer->>File: 리뷰 로드
     Analyzer->>Analyzer: TF-IDF 분석<br/>키워드 추출<br/>후회 요인 식별
-    Analyzer->>CSV: Factor 저장<br/>(anchor/context/negation terms)
+    Analyzer->>FactorCSV: Factor 저장<br/>(anchor/context/negation terms)
     Analyzer-->>User: ✅ 분석 완료
+    
+    User->>QuestionGen: python update_dialogue.py
+    QuestionGen->>FactorCSV: Factor 로드
+    QuestionGen->>QuestionGen: 각 Factor별<br/>질문 생성<br/>(우선순위 설정)
+    QuestionGen->>QuestionCSV: Question 저장<br/>(factor_id 매핑)
+    QuestionGen-->>User: ✅ 질문 생성 완료
 ```
 
 **주요 컴포넌트**:
@@ -164,9 +172,28 @@ sequenceDiagram
   factor_id,category,factor_key,display_name,weight,anchor_terms,context_terms,negation_terms
   1,robot_cleaner,noise,소음,1.5,"소음|시끄러|떠들","조용|정숙","조용하|괜찮"
   ```
+  - `factor_id`: 고유 식별자
+  - `category`: 제품 카테고리 (예: robot_cleaner)
+  - `factor_key`: Factor 키 (내부 참조용)
+  - `display_name`: 화면 표시 이름
+  - `weight`: 가중치 (점수 계산 시 곱셈)
   - `anchor_terms`: 핵심 키워드 (+1.0점)
   - `context_terms`: 연관 키워드 (+0.3점)
   - `negation_terms`: 부정/긍정 반전 표현 (점수 반영 X, `has_neg` 플래그만 설정하여 NEG/MIX/POS 증거 분류에 활용)
+
+- **Question 구조**:
+  ```csv
+  question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_hint
+  1001,1,water_control,물 양을 직접 조절하고 싶으신가요?,no_choice,,
+  1002,1,water_control,커피 시 물 관리가 중요한가요?,single_choice,매우 중요|보통|상관없음,
+  ```
+  - `question_id`: 질문 고유 식별자
+  - `factor_id`: 연결된 후회 요인 ID (factors.csv의 factor_id와 매핑)
+  - `factor_key`: 후회 요인 키 (factors.csv의 factor_key와 매핑)
+  - `question_text`: 사용자에게 표시되는 질문 텍스트
+  - `answer_type`: 답변 유형 (`no_choice`, `single_choice`, `multi_choice` 등)
+  - `choices`: 선택지 목록 (파이프 구분자 `|`, no_choice인 경우 빈 값)
+  - `next_factor_hint`: 다음 질문 선택 힌트 (선택적)
 
 ### 2. 질문 생성
 
@@ -187,9 +214,17 @@ graph LR
 
 **Question 구조**:
 ```csv
-factor_id,question_text,answer_type,choices,priority
-1,"소음이 걱정되시나요?",single_choice,"예|아니오|잘 모르겠음",1
+question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_hint
+1001,1,water_control,물 양을 직접 조절하고 싶으신가요?,no_choice,,
+1002,1,water_control,커피 시 물 관리가 중요한가요?,single_choice,매우 중요|보통|상관없음,
 ```
+- `question_id`: 질문 고유 식별자
+- `factor_id`: 연결된 후회 요인 ID (factors.csv의 factor_id와 매핑)
+- `factor_key`: 후회 요인 키 (factors.csv의 factor_key와 매핑)
+- `question_text`: 사용자에게 표시되는 질문 텍스트
+- `answer_type`: 답변 유형 (`no_choice`, `single_choice`, `multi_choice` 등)
+- `choices`: 선택지 목록 (파이프 구분자 `|`, no_choice인 경우 빈 값)
+- `next_factor_hint`: 다음 질문 선택 힌트 (선택적)
 
 ---
 
@@ -202,11 +237,11 @@ flowchart TD
     A[사용자 제품 URL 입력] --> B[URL 검증]
     B --> C{해당 제품 리뷰 데이터<br/>이미 존재?}
     
-    C -->|Yes| D[기존 CSV 로드]
+    C -->|Yes| D[캐시된 리뷰 로드<br/>세션 저장소]
     C -->|No| E[크롤링 트리거]
     
     E --> F[Selenium WebDriver 실행]
-    F --> G[리뷰 수집 & 저장]
+    F --> G[리뷰 수집 & 세션 저장]
     G --> D
     
     D --> H[DialogueSession 생성]
@@ -226,12 +261,15 @@ flowchart TD
 ```python
 class DialogueSession:
     def __init__(self, category, data_dir, reviews_df=None):
-        # 1. 데이터 로드 (크롤링된 CSV)
-        self.reviews_df = reviews_df  # URL에서 수집된 리뷰 데이터
+        # 1. 데이터 로드
+        # - reviews_df: 세션 저장소에서 전달받은 리뷰 (운영)
+        # - None: CSV에서 로드 (테스트/개발)
+        self.reviews_df = reviews_df
         
-        # 2. Factor 필터링 (카테고리별)
-        all_factors = parse_factors(self.factors_df)
+        # 2. Factor/Question 파싱
+        all_factors = parse_factors(factors_df)
         self.factors = [f for f in all_factors if f.category == category]
+        self.questions = parse_questions(questions_df)
         
         # 3. 메트릭 기록
         dialogue_sessions_total.labels(category=category).inc()

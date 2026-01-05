@@ -72,3 +72,11 @@ desktop.ini
 *.iml
 .vscode/settings.json
 .vscode/launch.json
+
+# zip files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.7z

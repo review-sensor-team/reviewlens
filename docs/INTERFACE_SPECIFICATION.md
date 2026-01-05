@@ -57,9 +57,10 @@ interface Review {
 }
 
 interface FactorMatch {
-  factor_id?: number;
-  factor_key: string;
-  display_name: string;
+  factor_id?: number;            // Factor 고유 ID
+  factor_key: string;            // Factor 키
+  display_name: string;          // Factor 표시명
+  description?: string;          // Factor 설명
   sentences: string[];           // 매칭된 문장들
   matched_terms: string[];       // 매칭된 키워드들
 }
@@ -556,9 +557,10 @@ matches = analyzer.analyze_reviews(
         "review_id": 12345,
         "factor_matches": [
             {
-                "factor_key": "noise",
                 "factor_id": 1,
+                "factor_key": "noise",
                 "display_name": "소음",
+                "description": "소음이 심해서 아쉬운 요인",
                 "sentences": ["소음이 너무 크고"],
                 "matched_terms": ["소음", "크"]
             }
@@ -686,20 +688,22 @@ sum(rate(llm_calls_total[5m]))
 @dataclass
 class Factor:
     factor_id: int                    # 고유 ID
-    category: str                     # 카테고리 키
     factor_key: str                   # Factor 키 (예: 'noise')
-    display_name: str                 # 표시명 (예: '소음')
-    weight: float                     # 가중치 (1.0-3.0)
+    category: str                     # 카테고리 키 (예: 'robot_cleaner')
+    category_name: str                # 카테고리 표시명 (예: '로봇청소기')
+    display_name: str                 # Factor 표시명 (예: '소음')
+    description: str                  # Factor 설명
     anchor_terms: List[str]           # 핵심 키워드
     context_terms: List[str]          # 연관 키워드
     negation_terms: List[str]         # 반전 표현
+    weight: float                     # 가중치 (1.0-3.0)
 ```
 
 **CSV 형식** (`data/factor/reg_factor.csv`):
 ```csv
-factor_id,category,factor_key,display_name,weight,anchor_terms,context_terms,negation_terms
-1,robot_cleaner,noise,소음,1.5,"소음|시끄러|떠들","조용|정숙","조용하|괜찮"
-2,robot_cleaner,suction,흡입력,2.0,"흡입|빨아들","청소력|파워","약하|부족"
+factor_id,factor_key,category,category_name,display_name,description,anchor_terms,context_terms,negation_terms,weight
+1,noise,robot_cleaner,로봇청소기,소음,소음이 심해서 아쉬운 요인,소음|시끄러|떠들,조용|정숙,조용하|괜찮,1.5
+2,suction,robot_cleaner,로봇청소기,흡입력,흡입력이 약해서 아쉬운 요인,흡입|빨아들,청소력|파워,약하|부족,2.0
 ```
 
 **점수 계산 로직**:
@@ -727,6 +731,70 @@ final_score = weighted_score * rating_multiplier
 
 ---
 
+## 부록: Question 데이터 구조
+
+### Question 클래스
+
+**Python 정의**:
+```python
+@dataclass
+class Question:
+    question_id: int                  # 고유 ID
+    factor_id: int                    # 연결된 Factor ID
+    factor_key: str                   # Factor 키 (참고용)
+    question_text: str                # 질문 텍스트
+    answer_type: str                  # 'no_choice' | 'single_choice'
+    choices: str                      # 선택지 ('|'로 구분)
+    next_factor_hint: str             # 다음 Factor 힌트
+```
+
+**CSV 형식** (`data/question/reg_question.csv`):
+```csv
+question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_hint
+1001,1,water_control,물 양을 직접 조절하고 싶으신가요?,no_choice,,
+1002,1,water_control,커피 시 물 관리가 중요한가요?,single_choice,매우 중요|보통|상관없음,
+1003,2,coffee_delivery,배송에 대해 걱정되시나요?,no_choice,,
+```
+
+**파싱 및 로딩**:
+```python
+from backend.pipeline.reg_store import load_csvs, parse_questions
+
+# CSV 로드
+_, _, questions_df = load_csvs(data_dir)
+
+# Question 객체 리스트로 변환
+questions = parse_questions(questions_df)  # List[Question]
+```
+
+**사용 예시**:
+```python
+# DialogueSession에서 사용
+session = DialogueSession(category, data_dir, reviews_df)
+
+# factor_id로 질문 찾기
+matches = [q for q in session.questions if q.factor_id == 1]
+
+# factor_key로 찾기
+matches = [q for q in session.questions if q.factor_key == 'noise']
+
+# 질문 정보 접근
+for question in matches:
+    print(f"Q{question.question_id}: {question.question_text}")
+    print(f"  Type: {question.answer_type}")
+    if question.choices:
+        print(f"  Choices: {question.choices}")
+```
+
+**answer_type 설명**:
+- `no_choice`: 자유 응답 (예: "네", "아니오", "잘 모르겠어요")
+- `single_choice`: 선택지 제공 (choices 필드 사용)
+
+**질문 선택 로직** (DialogueSession._pick_next_question):
+1. Top factors에서 아직 질문하지 않은 Factor 찾기
+2. factor_id로 questions 리스트에서 매칭되는 질문 검색
+3. question_id가 낮은(우선순위 높은) 질문 선택
+4. 질문이 없으면 기본 질문 반환
 ## 부록: 에러 처리 가이드
 
 ### HTTP 에러 코드
@@ -763,8 +831,9 @@ final_score = weighted_score * rating_multiplier
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
 | 1.0 | 2026-01-04 | 초기 작성 |
+| 1.1 | 2026-01-05 | Factor/Question 데이터 구조 업데이트 |
 
 ---
 
 **문서 작성자**: ReviewLens Team  
-**최종 업데이트**: 2026-01-04
+**최종 업데이트**: 2026-01-05
