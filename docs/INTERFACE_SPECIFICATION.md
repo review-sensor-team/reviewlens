@@ -190,7 +190,7 @@ http_request_duration_seconds_bucket{method="POST",endpoint="/api/chat/message",
 
 **Python 인터페이스**:
 ```python
-from backend.pipeline.dialogue import DialogueSession
+from backend.dialogue.dialogue import DialogueSession
 
 # 생성
 session = DialogueSession(
@@ -288,7 +288,7 @@ def _finalize(top_factors: List[Tuple[str, float]]) -> BotTurn
 
 **Python 인터페이스**:
 ```python
-from backend.services.llm_factory import LLMFactory
+from backend.llm.llm_factory import LLMFactory
 
 client = LLMFactory.create_client(
     provider: str,                 # 'openai' | 'gemini' | 'claude'
@@ -758,7 +758,7 @@ question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_h
 
 **파싱 및 로딩**:
 ```python
-from backend.pipeline.reg_store import load_csvs, parse_questions
+from backend.dialogue.reg_store import load_csvs, parse_questions
 
 # CSV 로드
 _, _, questions_df = load_csvs(data_dir)

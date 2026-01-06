@@ -256,7 +256,7 @@ flowchart TD
     style L fill:#fce4ec
 ```
 
-**주요 로직** (`backend/pipeline/dialogue.py`):
+**주요 로직** (`backend/dialogue/dialogue.py`):
 
 ```python
 class DialogueSession:
@@ -361,7 +361,7 @@ graph TB
     style I fill:#ffcdd2
 ```
 
-**Label 분류 로직** (`backend/pipeline/retrieval.py`):
+**Label 분류 로직** (`backend/dialogue/retrieval.py`):
 
 ```python
 def _assign_label(row, factor_key):
@@ -864,7 +864,7 @@ flowchart TD
 | `api/routes_chat.py` | 대화 API 엔드포인트 | `/start`, `/message` 처리 |
 | `api/routes_metrics.py` | 메트릭 노출 | `/metrics` Prometheus 형식 |
 
-### 2. 파이프라인 (`backend/pipeline/`)
+### 2. 대화 엔진 (`backend/dialogue/`)
 
 | 파일 | 역할 | 핵심 기능 |
 |------|------|----------|
@@ -874,7 +874,7 @@ flowchart TD
 | `reg_store.py` | 데이터 로딩 | CSV 파싱, Factor 객체 생성 |
 | `ingest.py` | 텍스트 정규화 | 공백 제거, 소문자 변환 |
 
-### 3. LLM 통합 (`backend/services/`)
+### 3. LLM 통합 (`backend/llm/`)
 
 | 파일 | 역할 | Provider |
 |------|------|----------|

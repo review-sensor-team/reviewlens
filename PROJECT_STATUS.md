@@ -97,17 +97,23 @@ python -m backend.regret_bot
 ```
 reviewlens/
 ├── backend/
-│   ├── pipeline/          # 핵심 처리 로직
+│   ├── dialogue/          # 핵심 처리 로직 (대화 엔진)
 │   │   ├── ingest.py
 │   │   ├── reg_store.py
 │   │   ├── sensor.py
 │   │   ├── retrieval.py
 │   │   ├── dialogue.py
 │   │   └── prompt_builder.py
+│   ├── llm/              # LLM 클라이언트 구현체
+│   │   ├── llm_base.py
+│   │   ├── llm_factory.py
+│   │   ├── llm_gemini.py
+│   │   ├── llm_openai.py
+│   │   └── llm_claude.py
 │   ├── app/              # FastAPI 애플리케이션
 │   │   ├── main.py
 │   │   ├── api/
-│   │   ├── services/
+│   │   ├── session/
 │   │   ├── schemas/
 │   │   └── core/
 │   ├── data/             # REG CSV 데이터

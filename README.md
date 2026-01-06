@@ -96,7 +96,7 @@ LLM 호출 직전 Context 생성
 #### Backend Pipeline (Modular Architecture)
 ```
 backend/
-├── pipeline/
+├── dialogue/
 │   ├── ingest.py          # 리뷰 정규화 및 중복 제거
 │   ├── reg_store.py       # REG Factor/Question CSV 로딩
 │   │                      # Factor: category, display_name 포함
@@ -108,13 +108,19 @@ backend/
 │   │                      # - LLM 프롬프트 생성
 │   │                      # - 타임스탬프 기반 파일 저장
 │   └── prompt_builder.py  # LLM context JSON generation
+├── llm/                  # LLM 클라이언트 구현체
+│   ├── llm_base.py
+│   ├── llm_factory.py
+│   ├── llm_gemini.py
+│   ├── llm_openai.py
+│   └── llm_claude.py
 ├── app/
 │   ├── main.py           # FastAPI application
 │   ├── api/
 │   │   └── routes_chat.py  # Chat session API endpoints
 │   │       # POST /api/chat/start - 세션 시작
 │   │       # POST /api/chat/message - 메시지 전송
-│   ├── services/
+│   ├── session/
 │   │   └── session_store.py  # Session management (in-memory)
 │   └── schemas/          # Request/Response models
 ├── data/
