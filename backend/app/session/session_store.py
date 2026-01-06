@@ -5,7 +5,7 @@ import uuid
 import logging
 import pandas as pd
 
-from backend.pipeline.dialogue import DialogueSession
+from backend.dialogue.dialogue import DialogueSession
 
 logger = logging.getLogger(__name__)
 
