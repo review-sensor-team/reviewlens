@@ -5,12 +5,12 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
 
-from backend.pipeline.dialogue import DialogueSession
+from backend.dialogue.dialogue import DialogueSession
 from ..collector import SmartStoreCollector
 from ..collector.factor_analyzer import FactorAnalyzer
 from ..schemas.requests import ChatRequest, SessionStartRequest, CollectReviewsRequest
 from ..schemas.responses import ChatResponse, SessionStartResponse, CollectReviewsResponse, Review, FactorMatch
-from ..services.session_store import SessionStore
+from ..session.session_store import SessionStore
 
 logger = logging.getLogger("api.chat")
 
