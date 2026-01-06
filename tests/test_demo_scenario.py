@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.pipeline.dialogue import DialogueSession
+from backend.dialogue.dialogue import DialogueSession
 
 
 def test_demo_3to5_turns():

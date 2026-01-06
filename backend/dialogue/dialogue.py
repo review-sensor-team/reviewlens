@@ -487,7 +487,7 @@ class DialogueSession:
     ) -> str:
         """LLM을 사용하여 최종 분석 요약 생성"""
         try:
-            from ..services.llm_factory import get_llm_client
+            from ..llm.llm_factory import get_llm_client
             from ..core.metrics import llm_calls_total, llm_duration_seconds, Timer
             from ..core.settings import settings
             

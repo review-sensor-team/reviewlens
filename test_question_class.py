@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test Question class implementation"""
 
-from backend.pipeline.reg_store import Question, parse_questions, load_csvs
+from backend.dialogue.reg_store import Question, parse_questions, load_csvs
 from pathlib import Path
 
 # Load CSVs
