@@ -15,8 +15,10 @@
 ```bash
 cd /Users/ssnko/app/python/reviewlens
 source .venv/bin/activate
-uvicorn backend.app.main:app --reload
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
+
+> **참고**: 코드 변경 시 `Ctrl+C`로 서버를 종료한 후 다시 실행해야 합니다.
 
 ### 확인
 - 서버 주소: `http://localhost:8000`
@@ -209,6 +211,22 @@ VITE v5.x.x  ready in xxx ms
 rm -rf node_modules package-lock.json
 npm install
 npm run dev
+```
+ + uvicorn --reload)
+
+**원인**: macOS의 multiprocessing spawn 방식과 uvicorn reload 기능의 호환성 문제
+
+**해결**:
+```bash
+# --reload 옵션 없이 실행 (권장)
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+
+# 코드 변경 후에는 Ctrl+C로 종료하고 다시 실행
+```
+
+**대안**: Python 3.10 이상으로 업그레이드하면 이 문제가 해결됩니다.
+# 또는 리로드 없이 실행
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
 ---
