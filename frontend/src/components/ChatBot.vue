@@ -212,8 +212,15 @@
 
     <!-- 다른 상품 분석 버튼 (항상 표시, 리뷰 수집 전에는 비활성화) -->
     <div v-if="!finalResult" class="reset-action">
+      <button 
+        v-if="reviewsCollected && messages.length > 2" 
+        class="reset-conversation-button" 
+        @click="resetConversation"
+      >
+        🔄 대화 내용 초기화
+      </button>
       <button class="new-analysis-button" @click="resetSession" :disabled="!reviewsCollected">
-        🔄 새로운 리뷰를 분석할래요
+        🆕 새로운 리뷰를 분석할래요
       </button>
     </div>
 
@@ -315,6 +322,51 @@ const loadSessionData = () => {
     }
   }
   return false
+}
+
+// 대화 내용만 초기화 (같은 상품으로 다시 시작)
+const resetConversation = async () => {
+  if (!cachedReviews.value || !lastProductUrl.value) {
+    alert('리뷰 데이터가 없습니다.')
+    return
+  }
+
+  if (!confirm('대화 내용을 초기화하고 처음부터 다시 시작하시겠습니까?')) {
+    return
+  }
+
+  try {
+    isLoading.value = true
+
+    // 백엔드에 같은 리뷰로 새 세션 시작
+    const response = await startChatSession(
+      cachedReviews.value,
+      currentCategory.value || 'furniture_chair'
+    )
+
+    // 새 세션 ID 저장
+    sessionId.value = response.session_id
+    
+    // 메시지만 초기화
+    messages.value = []
+    finalResult.value = null
+    userInput.value = ''
+
+    // 안내 메시지
+    messages.value.push({
+      role: 'bot',
+      text: `대화 내용을 초기화했어요! 🔄\n\n같은 상품(리뷰 ${collectedReviewCount.value}건)으로 처음부터 다시 시작할게요.\n궁금한 점을 물어보세요!`
+    })
+
+    // 세션 데이터 저장
+    saveSessionData()
+    scrollToBottom()
+  } catch (error) {
+    console.error('대화 초기화 오류:', error)
+    alert('대화 초기화에 실패했습니다: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // 세션 초기화
@@ -718,7 +770,28 @@ onMounted(() => {
   border-top: 1px solid #dee2e6;
   flex-shrink: 0;
   display: flex;
+  gap: 0.5rem;
   justify-content: flex-start;
+}
+
+.reset-conversation-button {
+  padding: 0.6rem 1.2rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.reset-conversation-button:hover {
+  background: #5568d3;
+}
+
+.reset-conversation-button:active {
+  background: #4c5abd;
 }
 
 .new-analysis-button {

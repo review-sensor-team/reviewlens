@@ -31,8 +31,9 @@ class BotTurn:
     """챗봇 턴 결과"""
     question_text: Optional[str]
     top_factors: List[Tuple[str, float]]
-    is_final: bool
-    llm_context: Optional[Dict] = None
+    is_final: bool  # 사용자가 명시적으로 대화 종료를 요청했을 때만 True
+    llm_context: Optional[Dict] = None  # 수렴 달성 시 분석 결과 제공 (대화는 계속 가능)
+    has_analysis: bool = False  # 분석 결과가 포함되어 있는지 여부
     # 질문 정보
     question_id: Optional[str] = None
     answer_type: Optional[str] = None  # 'no_choice' | 'single_choice'
@@ -144,25 +145,20 @@ class DialogueSession:
         # 3) 수렴(안정성) 체크: top3 Jaccard
         cur_top3 = [k for k, _ in top_factors]
         sim = _jaccard(cur_top3, self.prev_top3) if self.prev_top3 else 0.0
-        if sim >= 0.67:  # 3개 중 2개 이상 같으면 꿄 안정
+        if sim >= 0.67:  # 3개 중 2개 이상 같으면 안정
             self.stability_hits += 1
         else:
             self.stability_hits = 1
         self.prev_top3 = cur_top3
         logger.debug(f"  - 안정성: sim={sim:.2f}, hits={self.stability_hits}")
 
-        # 4) 종료 조건
-        # - 최소 3턴
-        # - 안정성(유사도) 2회 연속 충족이면 종료
-        # - 또는 최대 5턴에서 강제 종료
-        is_final = (self.turn_count >= 3 and self.stability_hits >= 2) or (self.turn_count >= 5)
-        logger.info(f"  - 종료 체크: is_final={is_final} (turn={self.turn_count}, stability={self.stability_hits})")
+        # 4) 분석 준비 여부 체크
+        # - 최소 3턴 이상 + 안정성 2회 이상 달성 시 분석 결과 제공
+        # - 분석 제공 후에도 대화는 계속 가능
+        should_provide_analysis = (self.turn_count >= 3 and self.stability_hits >= 2)
+        logger.info(f"  - 분석 체크: should_provide_analysis={should_provide_analysis} (turn={self.turn_count}, stability={self.stability_hits})")
 
-        if is_final:
-            logger.info(f"[대화 종료] 최종 top factors: {[(k, round(s, 2)) for k, s in top_factors]}")
-            return self._finalize(top_factors)
-
-        # 5) 다음 질문 1개 생성(상위요인 중심 + 중복방지)
+        # 5) 다음 질문 1개 생성 (분석 제공 여부와 무관하게 항상 생성)
         question_text, question_id, answer_type, choices = self._pick_next_question(top_factors)
         logger.info(f"  - 다음 질문: {question_id or 'N/A'} ({answer_type or 'no_choice'})")
         logger.debug(f"    질문 텍스트: {question_text[:50]}...")
@@ -170,14 +166,30 @@ class DialogueSession:
         # 히스토리: assistant
         self.dialogue_history.append({"role": "assistant", "message": question_text})
 
+        # 6) 분석이 준비되었으면 LLM 컨텍스트 생성 (대화는 계속)
+        llm_context = None
+        has_analysis = False
+        if should_provide_analysis:
+            logger.info(f"[분석 준비 완료] top factors: {[(k, round(s, 2)) for k, s in top_factors]}")
+            llm_context = self._generate_analysis(top_factors)
+            has_analysis = True
+
         return BotTurn(
             question_text=question_text,
             top_factors=top_factors,
-            is_final=False,
+            is_final=False,  # 대화는 계속 가능
+            llm_context=llm_context,
+            has_analysis=has_analysis,
             question_id=question_id,
             answer_type=answer_type,
             choices=choices
         )
+
+    def finalize_now(self) -> BotTurn:
+        """사용자 요청으로 즉시 분석 종료"""
+        logger.info(f"[사용자 요청 종료] turn={self.turn_count}")
+        top_factors = self._get_top_factors(top_k=3)
+        return self._finalize(top_factors)
 
     # ----------------------------- internals -----------------------------
 
@@ -267,27 +279,27 @@ class DialogueSession:
                 return q, None, None, None
         return "추가로 고려하시는 부분이 있나요?", None, None, None
 
-    def _finalize(self, top_factors: List[Tuple[str, float]]) -> BotTurn:
-        # 메트릭: 대화 완료
-        dialogue_completions_total.labels(category=self.category).inc()
+    def _generate_analysis(self, top_factors: List[Tuple[str, float]]) -> Dict:
+        """분석 결과 생성 (대화 종료 없이)"""
+        logger.info(f"[분석 생성] turn={self.turn_count}, top_factors={len(top_factors)}")
         
         # 1) 리뷰 스코어 계산(캐싱)
         if self.scored_df is None or self.factor_counts is None:
             with Timer(scoring_duration_seconds, {'category': self.category}):
                 self.scored_df, self.factor_counts = compute_review_factor_scores(self.reviews_df, self.factors)
 
-        # 2) evidence 추출(label 포함됨: retrieval.py에서 생성 + quota 적용)
+        # 2) evidence 추출
         with Timer(retrieval_duration_seconds, {'category': self.category}):
             evidence = retrieve_evidence_reviews(
                 self.scored_df,
                 self.factors_map,
                 [(k, s) for k, s in top_factors],
                 per_factor_limit=(8, 8),
-                max_total_evidence=15,  # ✅ 전체 증거 상한
-                quota_by_rank={  # ✅ rank별 quota(원하면 튜닝)
-                    0: {"NEG": 3, "MIX": 2, "POS": 1},  # top1
-                    1: {"NEG": 2, "MIX": 2, "POS": 1},  # top2
-                    2: {"NEG": 2, "MIX": 2, "POS": 1},  # top3
+                max_total_evidence=15,
+                quota_by_rank={
+                    0: {"NEG": 3, "MIX": 2, "POS": 1},
+                    1: {"NEG": 2, "MIX": 2, "POS": 1},
+                    2: {"NEG": 2, "MIX": 2, "POS": 1},
                 },
             )
         
@@ -327,7 +339,7 @@ class DialogueSession:
             ],
         }
 
-        llm_ctx_for_api = {
+        llm_ctx_for_frontend = {
             "category_slug": self.category_slug,
             "dialogue_history": self.dialogue_history,
             "top_factors": [
@@ -351,37 +363,26 @@ class DialogueSession:
                 for e in evidence
             ],
             "safety_rules": safety_rules,
-        }
-
-        llm_ctx_for_frontend = {
-            **llm_ctx_for_api,
             "calculation_info": calculation_info,
-            "llm_summary": llm_summary,  # LLM 생성 요약 추가
+            "llm_summary": llm_summary,
         }
 
-        prompt = self._build_llm_prompt(llm_ctx_for_api)
+        return llm_ctx_for_frontend
 
-        # 저장(데모)
-        from datetime import datetime
-        import json
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir = Path("out")
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        output_file = out_dir / f"llm_context_demo.{timestamp}.json"
-        with output_file.open("w", encoding="utf-8") as f:
-            json.dump(llm_ctx_for_api, f, ensure_ascii=False, indent=2)
-
-        prompt_file = out_dir / f"prompt_demo.{timestamp}.txt"
-        with prompt_file.open("w", encoding="utf-8") as f:
-            f.write(prompt)
-
+    def finalize_now(self) -> BotTurn:
+        """사용자 요청으로 명시적 대화 종료"""
+        logger.info(f"[사용자 명시적 종료] turn={self.turn_count}")
+        dialogue_completions_total.labels(category=self.category).inc()
+        
+        top_factors = self._get_top_factors(top_k=3)
+        llm_context = self._generate_analysis(top_factors)
+        
         return BotTurn(
             question_text=None,
             top_factors=top_factors,
-            is_final=True,
-            llm_context=llm_ctx_for_frontend,
+            is_final=True,  # 명시적 종료만 True
+            llm_context=llm_context,
+            has_analysis=True,
         )
 
     def _build_llm_prompt(self, llm_ctx: Dict) -> str:

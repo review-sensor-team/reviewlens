@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     """채팅 메시지 요청"""
     session_id: str
     message: str
+    request_finalize: bool = False  # True일 경우 강제로 분석 종료
 
 
 class CollectReviewsRequest(BaseModel):

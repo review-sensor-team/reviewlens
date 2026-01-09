@@ -123,7 +123,7 @@ async def start_session(request: SessionStartRequest):
 @router.post("/message", response_model=ChatResponse)
 async def send_message(request: ChatRequest):
     """대화 메시지 전송"""
-    logger.info(f"[메시지 수신] session_id={request.session_id}, message={request.message[:50]}...")
+    logger.info(f"[메시지 수신] session_id={request.session_id}, message={request.message[:50]}..., request_finalize={request.request_finalize}")
     
     session = session_store.get_session(request.session_id)
     if not session:
@@ -131,7 +131,13 @@ async def send_message(request: ChatRequest):
         raise HTTPException(status_code=404, detail="Session not found")
     
     try:
-        bot_turn = session.step(request.message)
+        # 사용자가 분석 종료를 요청한 경우
+        if request.request_finalize:
+            logger.info(f"[사용자 요청 종료] session_id={request.session_id}")
+            bot_turn = session.finalize_now()
+        else:
+            bot_turn = session.step(request.message)
+        
         logger.info(f"[대화 진행] session_id={request.session_id}, is_final={bot_turn.is_final}, top_factors={len(bot_turn.top_factors)}")
         logger.info(f"[top_factors 상세] {bot_turn.top_factors[:5]}")
         
@@ -177,16 +183,31 @@ async def send_message(request: ChatRequest):
         elif bot_turn.choices:
             choices_str = bot_turn.choices
         
+        # 분석 완료 가능 여부 판단 (최소 3턴 이상 + 안정성 달성)
+        can_finalize = session.turn_count >= 3 and session.stability_hits >= 2
+        stability_info = None
+        if session.turn_count >= 3:
+            if session.stability_hits >= 3:
+                stability_info = "요인 분석이 충분히 수렴했습니다. 분석을 완료하시겠어요?"
+            elif session.stability_hits >= 2:
+                stability_info = "분석 준비가 거의 완료되었습니다."
+            else:
+                stability_info = "조금 더 대화하면 더 정확한 분석이 가능합니다."
+        
         response_data = ChatResponse(
             session_id=request.session_id,
             bot_message=bot_message,
             is_final=bot_turn.is_final,
+            has_analysis=bot_turn.has_analysis,
             top_factors=[{"factor_key": k, "score": s} for k, s in bot_turn.top_factors],
             llm_context=bot_turn.llm_context,
             related_reviews=related_reviews,
             question_id=bot_turn.question_id,
             answer_type=bot_turn.answer_type,
-            choices=choices_str
+            choices=choices_str,
+            can_finalize=can_finalize,
+            turn_count=session.turn_count,
+            stability_info=stability_info
         )
         
         logger.info(f"[응답 데이터] related_reviews in response: {response_data.related_reviews is not None}")

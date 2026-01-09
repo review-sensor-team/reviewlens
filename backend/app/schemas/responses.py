@@ -20,7 +20,8 @@ class ChatResponse(BaseModel):
     """채팅 응답"""
     session_id: str
     bot_message: Optional[str]
-    is_final: bool
+    is_final: bool  # 사용자가 명시적으로 종료한 경우만 True
+    has_analysis: bool = False  # 분석 결과가 포함되어 있는지 (대화는 계속 가능)
     top_factors: List[FactorScore]
     llm_context: Optional[Dict] = None
     # 추가: 관련 리뷰 정보
@@ -29,6 +30,10 @@ class ChatResponse(BaseModel):
     question_id: Optional[str] = None
     answer_type: Optional[str] = None  # 'no_choice' | 'single_choice'
     choices: Optional[str] = None  # '예|아니오|잘 모르겠음' 형식
+    # 분석 가능 여부 (사용자가 충분히 대화했고 분석을 완료할 수 있는 상태)
+    can_finalize: bool = False
+    turn_count: int = 0
+    stability_info: Optional[str] = None  # 수렴 상태 정보
 
 
 class FactorMatch(BaseModel):
