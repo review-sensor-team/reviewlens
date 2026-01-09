@@ -13,6 +13,7 @@ env/
 *.key
 *.pem
 secrets/
+mydevelopment.md
 
 # API Keys & Credentials
 config/secrets.yaml

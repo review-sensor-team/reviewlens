@@ -288,7 +288,7 @@ def _finalize(top_factors: List[Tuple[str, float]]) -> BotTurn
 
 **Python 인터페이스**:
 ```python
-from backend.llm.llm_factory import LLMFactory
+from backend.services.llm_factory import LLMFactory
 
 client = LLMFactory.create_client(
     provider: str,                 # 'openai' | 'gemini' | 'claude'

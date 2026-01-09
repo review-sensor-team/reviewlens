@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
+#feature/api
+from typing import Dict, Any
 
 from backend.dialogue.dialogue import DialogueSession
 from ..collector import SmartStoreCollector
@@ -14,9 +16,14 @@ from ..session.session_store import SessionStore
 
 logger = logging.getLogger("api.chat")
 
+#feature/api
+from backend.app.core.settings import settings
+from backend.dialogue.llm_client import LLMClient
+
 router = APIRouter()
 session_store = SessionStore()
 
+<<<<<<< HEAD
 # 리뷰 수집 캐시 (URL을 키로 사용)
 review_cache: Dict[str, Dict] = {}
 MAX_CACHE_SIZE = 10  # 최근 10개 URL만 캐시
@@ -98,6 +105,9 @@ def detect_category(url: str, page_title: Optional[str] = None, reviews: Optiona
     return None, 'failed'
 
 
+#feature/api llm 설정 저장용 딕셔너리
+session_configs: Dict[str, Any] = {}
+
 @router.post("/start", response_model=SessionStartResponse)
 async def start_session(request: SessionStartRequest):
     """대화 세션 시작"""
@@ -108,9 +118,22 @@ async def start_session(request: SessionStartRequest):
             data_dir=Path("backend/data")
         )
         logger.info(f"[세션 생성 성공] session_id={session_id}, category={request.category}")
+
+        #feature/api LLMClient
+        api_key = settings.get_api_key(request.provider)
+        if not api_key:
+            raise HTTPException(status_code=400, detail=f"{request.provider} API Key가 설정되지 않았습니다.")
+        
+        session_configs[session_id] = { 
+            "provider": request.provider,
+            "model_name": request.model_name,
+            "api_key": api_key
+        }
+
         return SessionStartResponse(
             session_id=session_id,
-            message="세션이 시작되었습니다. 무엇이 궁금하신가요?"
+            #feature/api 초기 메시지에 LLM 정보 포함
+            message=f"세션이 시작되었습니다. 무엇이 궁금하신가요? LLM 정보: ({request.provider}/{request.model_name})"
         )
     except Exception as e:
         logger.error(f"[세션 시작 실패] category={request.category}, error={str(e)}", exc_info=True)
@@ -129,6 +152,11 @@ async def send_message(request: ChatRequest):
     if not session:
         logger.warning(f"[세션 없음] session_id={request.session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
+    
+    #  feature/api LLMClient 설정
+    config = session_configs.get(request.session_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="LLM 설정이 만료되었습니다. /start를 다시 해주세요.")
     
     try:
         # 사용자가 분석 종료를 요청한 경우
