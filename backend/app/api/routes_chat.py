@@ -55,7 +55,7 @@ async def send_message(request: ChatRequest):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    #   feature/api LLMClient 설정
+    #  feature/api LLMClient 설정
     config = session_configs.get(request.session_id)
     if not config:
         raise HTTPException(status_code=404, detail="LLM 설정이 만료되었습니다. /start를 다시 해주세요.")
