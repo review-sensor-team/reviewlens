@@ -32,6 +32,15 @@ from datetime import datetime
 import hashlib
 
 try:
+<<<<<<< HEAD
+<<<<<<< HEAD
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    import undetected_chromedriver as uc
+=======
+=======
+>>>>>>> dev
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
@@ -39,6 +48,10 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from webdriver_manager.chrome import ChromeDriverManager
+<<<<<<< HEAD
+>>>>>>> dev
+=======
+>>>>>>> dev
     SELENIUM_AVAILABLE = True
     
     # undetected-chromedriver는 선택적으로 import
@@ -83,7 +96,15 @@ class SmartStoreReviewCollector:
     
     def __init__(self, product_url: str, headless: bool = True):
         if not SELENIUM_AVAILABLE:
+<<<<<<< HEAD
+<<<<<<< HEAD
+            raise ImportError("Selenium과 undetected-chromedriver가 설치되어 있지 않습니다. pip install selenium undetected-chromedriver")
+=======
             raise ImportError("Selenium과 webdriver-manager가 설치되어 있지 않습니다. pip install selenium webdriver-manager")
+>>>>>>> dev
+=======
+            raise ImportError("Selenium과 webdriver-manager가 설치되어 있지 않습니다. pip install selenium webdriver-manager")
+>>>>>>> dev
         
         self.product_url = product_url
         self.product_id = self._extract_product_id(product_url)
@@ -97,6 +118,13 @@ class SmartStoreReviewCollector:
         return match.group(1)
     
     def _init_driver(self, headless: bool):
+<<<<<<< HEAD
+<<<<<<< HEAD
+        """Chrome 드라이버 초기화 - undetected-chromedriver 사용"""
+        options = uc.ChromeOptions()
+=======
+=======
+>>>>>>> dev
         """Chrome 드라이버 초기화 - URL에 따라 다른 드라이버 사용"""
         is_brand_naver = 'brand.naver.com' in self.product_url
         
@@ -118,18 +146,38 @@ class SmartStoreReviewCollector:
     def _init_selenium_driver(self, headless: bool):
         """일반 Selenium WebDriver 초기화"""
         options = Options()
+<<<<<<< HEAD
+>>>>>>> dev
+=======
+>>>>>>> dev
         
         # headless 모드 설정
         if headless:
             options.add_argument('--headless=new')
             options.add_argument('--window-size=1920,1080')
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
             options.add_argument('--disable-gpu')
+>>>>>>> dev
+=======
+            options.add_argument('--disable-gpu')
+>>>>>>> dev
         
         # 기본 설정
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-blink-features=AutomationControlled')
         
+<<<<<<< HEAD
+<<<<<<< HEAD
+        # undetected-chromedriver로 드라이버 생성
+        driver = uc.Chrome(options=options)
+        
+        # 창 크기 설정 (headless가 아닐 때만)
+=======
+=======
+>>>>>>> dev
         # User-Agent 설정 (봇 감지 회피)
         options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
@@ -151,6 +199,10 @@ class SmartStoreReviewCollector:
         })
         
         # 창 크기 설정
+<<<<<<< HEAD
+>>>>>>> dev
+=======
+>>>>>>> dev
         if not headless:
             try:
                 driver.set_window_size(1920, 1080)
@@ -159,6 +211,11 @@ class SmartStoreReviewCollector:
         
         return driver
     
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> dev
     def _init_uc_driver(self):
         """undetected-chromedriver 초기화 (headless 비활성화)"""
         options = uc.ChromeOptions()
@@ -181,6 +238,10 @@ class SmartStoreReviewCollector:
         
         return driver
     
+<<<<<<< HEAD
+>>>>>>> dev
+=======
+>>>>>>> dev
     def _wait_for_captcha(self):
         """보안확인(CAPTCHA) 페이지 감지 및 대기"""
         max_wait_time = 120  # 최대 2분 대기
@@ -251,10 +312,19 @@ class SmartStoreReviewCollector:
             # 리뷰 탭으로 이동
             self._navigate_to_review_tab()
             
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> dev
             # 별점 필터가 있으면 '평점 낮은순' 정렬로 변경
             if rating is not None or max_rating is not None:
                 self._set_sort_by_low_rating()
             
+<<<<<<< HEAD
+>>>>>>> dev
+=======
+>>>>>>> dev
             # 여러 페이지에서 리뷰 수집
             print("\n리뷰 데이터 수집 중...")
             reviews = self._collect_reviews_from_pages(max_reviews)
@@ -328,7 +398,15 @@ class SmartStoreReviewCollector:
                     print(f"✓ 리뷰 탭 클릭 성공 (선택자: {selector[:50]}...)")
                     time.sleep(3)  # 리뷰 로딩 대기
                     
+<<<<<<< HEAD
+<<<<<<< HEAD
+                    # 리뷰 탭 클릭 후 페이지 소스 확인
+=======
                     # 리뷰 구조 확인 (디버깅용)
+>>>>>>> dev
+=======
+                    # 리뷰 구조 확인 (디버깅용)
+>>>>>>> dev
                     self._debug_review_structure()
                     return
                 except:
@@ -340,6 +418,77 @@ class SmartStoreReviewCollector:
         except Exception as e:
             print(f"리뷰 탭 이동 실패: {e}")
     
+<<<<<<< HEAD
+<<<<<<< HEAD
+    def _debug_review_structure(self):
+        """리뷰 구조 디버깅"""
+        try:
+            page_source = self.driver.page_source
+            
+            # 리뷰 관련 모든 요소 찾기
+            print("\n[디버깅] 리뷰 구조 분석:")
+            
+            # 1. 모든 탭 찾기
+            tabs = self.driver.find_elements(By.CSS_SELECTOR, "a, button")
+            review_tabs = [tab for tab in tabs if '리뷰' in tab.text and '이벤트' not in tab.text]
+            if review_tabs:
+                print(f"  - 발견된 리뷰 탭: {len(review_tabs)}개")
+                for i, tab in enumerate(review_tabs[:3], 1):
+                    print(f"    {i}. 텍스트: '{tab.text}', 태그: {tab.tag_name}, 클래스: {tab.get_attribute('class')}")
+            
+            # 2. ul, li 구조 찾기
+            all_uls = self.driver.find_elements(By.TAG_NAME, "ul")
+            print(f"  - 전체 <ul> 요소: {len(all_uls)}개")
+            
+            for ul in all_uls:
+                ul_class = ul.get_attribute('class')
+                if ul_class and ('review' in ul_class.lower() or 'comment' in ul_class.lower()):
+                    li_count = len(ul.find_elements(By.TAG_NAME, "li"))
+                    print(f"    └─ 리뷰 관련 <ul> 클래스: '{ul_class}', <li> 개수: {li_count}")
+                    
+                    # 첫 번째 li의 구조 확인
+                    if li_count > 0:
+                        first_li = ul.find_elements(By.TAG_NAME, "li")[0]
+                        li_class = first_li.get_attribute('class')
+                        li_text_preview = first_li.text[:100] if first_li.text else "(텍스트 없음)"
+                        print(f"       첫 번째 <li> 클래스: '{li_class}'")
+                        print(f"       텍스트 미리보기: {li_text_preview}...")
+            
+        except Exception as e:
+            print(f"  디버깅 중 오류: {e}")
+    
+    def _collect_reviews_from_pages(self, max_reviews: int = None) -> List[Dict]:
+        """여러 페이지를 순회하며 리뷰 수집"""
+        all_reviews = []
+        visited_pages = set()
+        current_page_num = 1
+        
+        while True:
+            # 현재 페이지의 리뷰 수집
+            page_reviews = self._parse_current_page_reviews()
+            
+            if page_reviews:
+                all_reviews.extend(page_reviews)
+                print(f"\r페이지 {current_page_num}: +{len(page_reviews)}개 (총 {len(all_reviews)}개)", end="", flush=True)
+            
+            # 목표 수량 도달 체크
+            if max_reviews and len(all_reviews) >= max_reviews:
+                print(f"\n✓ 목표 리뷰 수({max_reviews})에 도달했습니다.")
+                return all_reviews[:max_reviews]
+            
+            # 다음 페이지로 이동
+            if not self._goto_next_page(visited_pages):
+                print(f"\n✓ 모든 페이지 수집 완료 (총 {len(all_reviews)}개)")
+                break
+            
+            current_page_num += 1
+            time.sleep(2)
+        
+        return all_reviews
+    
+=======
+=======
+>>>>>>> dev
     def _set_sort_by_low_rating(self):
         """리뷰 정렬을 '평점 낮은순'으로 변경"""
         try:
@@ -456,6 +605,10 @@ class SmartStoreReviewCollector:
         
         return all_reviews
     
+<<<<<<< HEAD
+>>>>>>> dev
+=======
+>>>>>>> dev
     def _parse_current_page_reviews(self) -> List[Dict]:
         """현재 페이지의 리뷰만 파싱"""
         reviews = []
@@ -562,6 +715,179 @@ class SmartStoreReviewCollector:
         except Exception as e:
             return False
     
+<<<<<<< HEAD
+<<<<<<< HEAD
+    def _debug_review_structure(self):
+        """페이지 네비게이션을 통한 리뷰 로딩"""
+        retry_count = 0
+        max_retries = 3
+        last_count = 0
+        no_change_count = 0
+        visited_pages = set()  # 방문한 페이지 추적
+        
+        print("\n리뷰 로딩 중", end="", flush=True)
+        
+        # 리뷰 선택자들
+        review_selectors = [
+            ".HTT4L8U0CU li.PxsZltB5tV",
+            ".RR2FSL9wTc > li",
+            "ul[class*='review'] > li",
+        ]
+        
+        while True:
+            try:
+                # 현재 페이지 확인
+                try:
+                    current_page_elem = self.driver.find_element(
+                        By.CSS_SELECTOR, 
+                        "a[role='menuitem'][aria-current='true']"
+                    )
+                    current_page = current_page_elem.text.strip()
+                    
+                    # 이미 방문한 페이지면 스킵
+                    if current_page in visited_pages:
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            print(f"\n✓ 페이지 순환 감지. (총 수집: {last_count}개)")
+                            break
+                    else:
+                        visited_pages.add(current_page)
+                        retry_count = 0
+                except:
+                    current_page = "?"
+                
+                # 현재 로드된 리뷰 수 확인
+                current_count = 0
+                for selector in review_selectors:
+                    try:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if len(elements) > current_count:
+                            current_count = len(elements)
+                    except:
+                        continue
+                
+                # 진행 상황 표시
+                if current_count > last_count:
+                    print(f"\r리뷰 로딩 중: 페이지 {current_page}, 총 {current_count}개", end="", flush=True)
+                    last_count = current_count
+                    no_change_count = 0
+                else:
+                    no_change_count += 1
+                
+                # 목표 수량 도달 체크
+                if max_reviews and current_count >= max_reviews:
+                    print(f"\n✓ 목표 리뷰 수({max_reviews})에 도달했습니다. (로드됨: {current_count}개)")
+                    return
+                
+                # 변화 없음 체크
+                if no_change_count >= 5:
+                    print(f"\n✓ 더 이상 로드할 리뷰가 없습니다. (총 {current_count}개)")
+                    break
+                
+                # 페이지 끝까지 스크롤
+                try:
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(1)
+                except:
+                    pass
+                
+                # 1. 먼저 다음 페이지 번호 클릭 시도
+                next_page_found = False
+                try:
+                    # 여러 방법으로 페이지 네비게이션 찾기
+                    pagination_selectors = [
+                        "div[role='menubar']",
+                        "div.w2_v0Jq7tg",  # HTML에서 본 클래스
+                        "div[data-shp-area-id='pgn']",
+                    ]
+                    
+                    pagination_div = None
+                    for selector in pagination_selectors:
+                        try:
+                            pagination_div = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            break
+                        except:
+                            continue
+                    
+                    if pagination_div:
+                        # 페이지 번호 링크 찾기 (여러 방법 시도)
+                        page_link_selectors = [
+                            "a.F0MhmLrV2F[aria-current='false']",
+                            "a[role='menuitem'][aria-current='false']",
+                        ]
+                        
+                        page_links = []
+                        for selector in page_link_selectors:
+                            page_links = pagination_div.find_elements(By.CSS_SELECTOR, selector)
+                            if page_links:
+                                break
+                        
+                        # 디버깅: 페이지 링크 확인
+                        if not page_links and retry_count == 0:
+                            all_links = pagination_div.find_elements(By.TAG_NAME, "a")
+                            print(f"\n[디버깅] 페이지 네비게이션 내 모든 링크: {len(all_links)}개")
+                            for link in all_links[:10]:
+                                aria_current = link.get_attribute('aria-current')
+                                class_name = link.get_attribute('class')
+                                print(f"  - 텍스트: '{link.text}', aria-current: {aria_current}, class: {class_name[:50]}")
+                        
+                        if page_links:
+                            # 첫 번째 비활성 페이지 클릭
+                            first_link = page_links[0]
+                            if first_link.is_displayed():
+                                next_page_text = first_link.text
+                                self.driver.execute_script("arguments[0].scrollIntoView(true);", first_link)
+                                time.sleep(0.5)
+                                # JavaScript로 직접 클릭 (다른 요소에 가려지는 문제 해결)
+                                self.driver.execute_script("arguments[0].click();", first_link)
+                                next_page_found = True
+                                print(f"→{next_page_text}", end="", flush=True)
+                                time.sleep(2.5)
+                                retry_count = 0
+                except Exception as e:
+                    if retry_count == 0:
+                        print(f"\n[디버깅] 페이지 링크 오류: {str(e)[:100]}")
+                    pass
+                
+                # 2. 페이지 번호가 없으면 "다음" 버튼 클릭 (10페이지 세트 이동)
+                if not next_page_found:
+                    next_button_selectors = [
+                        "//a[contains(text(), '다음') and @aria-hidden='false']",
+                        "//a[contains(@class, 'jFLfdWHAWX') and not(@aria-hidden='true')]",
+                    ]
+                    
+                    button_found = False
+                    for selector in next_button_selectors:
+                        try:
+                            button = self.driver.find_element(By.XPATH, selector)
+                            if button.is_displayed():
+                                self.driver.execute_script("arguments[0].scrollIntoView(true);", button)
+                                time.sleep(0.5)
+                                # JavaScript로 직접 클릭
+                                self.driver.execute_script("arguments[0].click();", button)
+                                button_found = True
+                                print(">", end="", flush=True)  # 10페이지 세트 이동 표시
+                                time.sleep(2)
+                                retry_count = 0
+                                break
+                        except:
+                            continue
+                    
+                    if not button_found:
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            print(f"\n✓ 더 이상 페이지가 없습니다. (총 {current_count}개)")
+                            break
+                        time.sleep(1)
+                    
+            except Exception as e:
+                print(f"\n⚠️  리뷰 로딩 중 오류: {str(e)[:100]}")
+                break
+    
+=======
+>>>>>>> dev
+=======
+>>>>>>> dev
     def _parse_reviews(self) -> List[Dict]:
         """페이지에서 리뷰 파싱"""
         reviews = []
