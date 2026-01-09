@@ -13,3 +13,7 @@ class ChatRequest(BaseModel):
     """채팅 메시지 요청"""
     session_id: str
     message: str
+
+class UrlCheckRequest(BaseModel):
+    """URL 접속 테스트 요청"""
+    url: str

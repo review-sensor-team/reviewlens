@@ -1,12 +1,14 @@
 """Chat API routes"""
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
+import requests
+from bs4 import BeautifulSoup
 #feature/api
 from typing import Dict, Any
 
 from backend.pipeline.dialogue import DialogueSession
-from ..schemas.requests import ChatRequest, SessionStartRequest
-from ..schemas.responses import ChatResponse, SessionStartResponse
+from ..schemas.requests import ChatRequest, SessionStartRequest, UrlCheckRequest
+from ..schemas.responses import ChatResponse, SessionStartResponse, URLResponse
 from ..services.session_store import SessionStore
 
 #feature/api
@@ -18,6 +20,51 @@ session_store = SessionStore()
 
 #feature/api llm 설정 저장용 딕셔너리
 session_configs: Dict[str, Any] = {}
+
+@router.post("/analyze/url", response_model=URLResponse)
+async def check_url_connection(request: UrlCheckRequest):
+    """
+    입력된 URL에 접속하여 연결이 되는지 확인 
+    """
+    target_url = request.url
+    
+    # 봇 차단 방지용 헤더 (효과가 있을지 모르겠음)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    try:
+        # 접속 시도 (5초 타임아웃)
+        response = requests.get(target_url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            # 성공 시 타이틀 가져오기
+            soup = BeautifulSoup(response.text, 'html.parser')
+            title = soup.title.string if soup.title else "제목 없음"
+            
+            return URLResponse(
+                url=target_url,
+                status="success",
+                error_message="",
+                content_summary=f"연결 성공! 페이지 제목: {title.strip()}"
+            )
+        else:
+            return URLResponse(
+                url=target_url,
+                status="failed",
+                error_message=f"접속 실패 (상태 코드: {response.status_code})",
+                content_summary=None
+            )
+
+    except Exception as e:
+        return URLResponse(
+            url=target_url,
+            status="error",
+            error_message=f"연결 오류 발생: {str(e)}",
+            content_summary=None
+        )
+
+
 
 @router.post("/start", response_model=SessionStartResponse)
 async def start_session(request: SessionStartRequest):
@@ -55,7 +102,7 @@ async def send_message(request: ChatRequest):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    #  feature/api LLMClient 설정
+    # feature/api LLMClient 설정
     config = session_configs.get(request.session_id)
     if not config:
         raise HTTPException(status_code=404, detail="LLM 설정이 만료되었습니다. /start를 다시 해주세요.")
