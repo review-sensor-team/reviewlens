@@ -162,10 +162,10 @@ git push origin feature/내작업이름
 
 ### 8-1. 최신 main 반영
 ```bash
-git checkout main
-git pull origin main
+git checkout dev
+git pull origin dev
 git checkout feature/내작업이름
-git merge main
+git merge dev
 ```
 
 충돌 발생 시:
