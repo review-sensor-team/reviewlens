@@ -1,6 +1,7 @@
 """Application settings"""
 from pydantic_settings import BaseSettings
 from typing import List, Dict, Optional
+from pydantic import ConfigDict
 import os
 
 
@@ -46,9 +47,11 @@ class Settings(BaseSettings):
             return self.OPENAI_API_KEY
         return None
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore"  # .env의 추가 필드 무시
+    )
 
 
 
