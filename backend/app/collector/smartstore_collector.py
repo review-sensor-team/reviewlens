@@ -642,3 +642,77 @@ class SmartStoreCollector:
             })
         
         return converted
+    
+    def collect_and_analyze(self, category: str, max_reviews: int = 100, 
+                           sort_by_low_rating: bool = True) -> Dict:
+        """리뷰 수집부터 Factor 분석까지 전체 파이프라인 실행
+        
+        Args:
+            category: 상품 카테고리 (예: 'appliance_heated_humidifier')
+            max_reviews: 최대 수집 리뷰 개수
+            sort_by_low_rating: 낮은 평점 순 정렬 여부
+            
+        Returns:
+            {
+                'reviews': List[Dict],  # Factor 분석이 포함된 리뷰 리스트
+                'page_title': str,      # 페이지 제목
+                'total_count': int      # 총 리뷰 개수
+            }
+        """
+        from .factor_analyzer import FactorAnalyzer
+        
+        logger.info(f"[리뷰 수집 및 분석 시작] category={category}, max_reviews={max_reviews}")
+        
+        # 1. 리뷰 수집
+        reviews, page_title = self.collect_reviews(
+            max_reviews=max_reviews,
+            sort_by_low_rating=sort_by_low_rating
+        )
+        logger.info(f"[리뷰 수집 완료] count={len(reviews) if reviews else 0}")
+        
+        if not reviews:
+            logger.warning(f"[리뷰 수집 실패] 수집된 리뷰가 없음")
+            return {
+                'reviews': [],
+                'page_title': page_title,
+                'total_count': 0
+            }
+        
+        # 2. backend 형식으로 변환
+        converted_reviews = self.convert_to_backend_format(reviews)
+        logger.debug(f"[리뷰 변환 완료] count={len(converted_reviews)}")
+        
+        # 3. 중복 제거 (review_id 기준)
+        converted_reviews = self._remove_duplicates(converted_reviews)
+        
+        # 4. Factor 분석
+        analyzer = FactorAnalyzer(category=category)
+        logger.debug(f"[Factor 분석 시작] category={category}")
+        
+        for review in converted_reviews:
+            factor_matches = analyzer.analyze_review(review['text'])
+            review['factor_matches'] = factor_matches
+        
+        logger.info(f"[Factor 분석 완료] reviews={len(converted_reviews)}")
+        
+        return {
+            'reviews': converted_reviews,
+            'page_title': page_title,
+            'total_count': len(converted_reviews)
+        }
+    
+    def _remove_duplicates(self, reviews: List[Dict]) -> List[Dict]:
+        """중복 리뷰 제거 (review_id 기준)"""
+        seen_ids = set()
+        unique_reviews = []
+        
+        for review in reviews:
+            review_id = review['review_id']
+            if review_id not in seen_ids:
+                seen_ids.add(review_id)
+                unique_reviews.append(review)
+        
+        if len(unique_reviews) < len(reviews):
+            logger.info(f"[중복 제거] {len(reviews)}건 → {len(unique_reviews)}건")
+        
+        return unique_reviews
