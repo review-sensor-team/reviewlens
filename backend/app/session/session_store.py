@@ -17,7 +17,7 @@ class SessionStore:
         self._sessions: Dict[str, DialogueSession] = {}
         self._reviews: Dict[str, List[Dict[str, Any]]] = {}  # session_id -> reviews
     
-    def create_session(self, category: str, data_dir: Path, reviews: Optional[List[Dict[str, Any]]] = None) -> str:
+    def create_session(self, category: str, data_dir: Path, reviews: Optional[List[Dict[str, Any]]] = None, product_name: Optional[str] = None) -> str:
         """새 세션 생성"""
         session_id = str(uuid.uuid4())
         
@@ -26,9 +26,9 @@ class SessionStore:
         if reviews:
             reviews_df = pd.DataFrame(reviews)
             self._reviews[session_id] = reviews
-            logger.info(f"[SessionStore] 세션 생성 with {len(reviews)}개 리뷰")
+            logger.info(f"[SessionStore] 세션 생성 with {len(reviews)}개 리뷰, product_name={product_name}")
         
-        session = DialogueSession(category=category, data_dir=data_dir, reviews_df=reviews_df)
+        session = DialogueSession(category=category, data_dir=data_dir, reviews_df=reviews_df, product_name=product_name)
         self._sessions[session_id] = session
         return session_id
     

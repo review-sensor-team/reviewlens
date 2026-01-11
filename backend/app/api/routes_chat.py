@@ -1,32 +1,37 @@
 """Chat API routes"""
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
 from pathlib import Path
-#feature/api
-from typing import Dict, Any
+
+from fastapi import APIRouter, HTTPException
 
 from backend.dialogue.dialogue import DialogueSession
+from backend.dialogue.llm_client import LLMClient
+from backend.app.core.settings import settings
 from ..collector import SmartStoreCollector
-from ..collector.factor_analyzer import FactorAnalyzer
 from ..schemas.requests import ChatRequest, SessionStartRequest, CollectReviewsRequest
 from ..schemas.responses import ChatResponse, SessionStartResponse, CollectReviewsResponse, Review, FactorMatch
 from ..session.session_store import SessionStore
 
 logger = logging.getLogger("api.chat")
 
-#feature/api
-from backend.app.core.settings import settings
-from backend.dialogue.llm_client import LLMClient
-
 router = APIRouter()
 session_store = SessionStore()
 
-<<<<<<< HEAD
+
 # 리뷰 수집 캐시 (URL을 키로 사용)
 review_cache: Dict[str, Dict] = {}
-MAX_CACHE_SIZE = 10  # 최근 10개 URL만 캐시
+MAX_CACHE_SIZE = 10
+
+# LLM 설정 저장용 딕셔너리
+session_configs: Dict[str, Any] = {}
+
+# 상수
+TOP_FACTORS_LIMIT = 3
+RELATED_REVIEWS_LIMIT = 5
+MIN_FINALIZE_TURNS = 3
+MIN_STABILITY_HITS = 2
 
 
 def get_available_categories() -> List[Dict[str, str]]:
@@ -105,8 +110,228 @@ def detect_category(url: str, page_title: Optional[str] = None, reviews: Optiona
     return None, 'failed'
 
 
-#feature/api llm 설정 저장용 딕셔너리
-session_configs: Dict[str, Any] = {}
+def get_related_reviews(session_id: str, top_factors: List[Tuple[str, float]]) -> Dict[str, Dict]:
+    """상위 factor에 대한 관련 리뷰 조회"""
+    related_reviews = {}
+    
+    if not top_factors:
+        logger.warning(f"[top_factors 없음] bot_turn.top_factors가 비어있음")
+        return related_reviews
+    
+    logger.info(f"[관련 리뷰 조회] top_factors={[f[0] for f in top_factors[:TOP_FACTORS_LIMIT]]}")
+    
+    for factor_key, score in top_factors[:TOP_FACTORS_LIMIT]:
+        review_info = session_store.get_reviews_by_factor(
+            session_id, 
+            factor_key, 
+            limit=RELATED_REVIEWS_LIMIT
+        )
+        logger.info(f"  - {factor_key}: review_info={review_info}")
+        
+        if review_info['count'] > 0:
+            related_reviews[factor_key] = review_info
+            logger.info(f"  - {factor_key}: {review_info['count']}건 발견")
+    
+    return related_reviews
+
+
+def format_bot_message(bot_turn, related_reviews: Dict) -> str:
+    """봇 메시지 포맷팅"""
+    if related_reviews and not bot_turn.is_final:
+        logger.info(f"[관련 리뷰 표시] keys={list(related_reviews.keys())}")
+        return bot_turn.question_text
+    else:
+        return bot_turn.question_text or ""
+
+
+def get_stability_info(turn_count: int, stability_hits: int) -> Optional[str]:
+    """분석 안정성 정보 반환"""
+    if turn_count < MIN_FINALIZE_TURNS:
+        return None
+    
+    if stability_hits >= 3:
+        return "요인 분석이 충분히 수렴했습니다. 분석을 완료하시겠어요?"
+    elif stability_hits >= MIN_STABILITY_HITS:
+        return "분석 준비가 거의 완료되었습니다."
+    else:
+        return "조금 더 대화하면 더 정확한 분석이 가능합니다."
+
+
+def format_choices(choices) -> Optional[str]:
+    """choices를 문자열로 변환"""
+    if not choices:
+        return None
+    
+    if isinstance(choices, list):
+        return '|'.join(choices)
+    return choices
+
+
+def check_cache(cache_key: str, product_url: str) -> Optional[CollectReviewsResponse]:
+    """캐시 확인 및 반환"""
+    if cache_key not in review_cache:
+        return None
+    
+    cached = review_cache[cache_key]
+    cached_session_id = cached.get('session_id')
+    
+    # 세션이 유효한 경우
+    if cached_session_id and session_store.get_session(cached_session_id):
+        logger.info(f"[캐시 히트 + 세션 유효] url={product_url}, session_id={cached_session_id}")
+        return CollectReviewsResponse(
+            success=True,
+            session_id=cached_session_id,
+            reviews=cached['reviews'],
+            total_count=cached['total_count'],
+            product_name=cached['product_name'],
+            detected_category=cached['category'],
+            category_confidence=cached['confidence'],
+            available_categories=get_available_categories(),
+            suggested_factors=cached.get('suggested_factors', []),
+            message=f"리뷰 {cached['total_count']}건을 불러왔습니다. (캐시)"
+        )
+    
+    # 세션이 만료된 경우 - 새 세션 생성
+    logger.info(f"[캐시 히트 + 세션 만료] url={product_url}, 새 세션 생성")
+    
+    # 리뷰 데이터를 딕셔너리로 변환
+    reviews_dict = [
+        r.model_dump() if hasattr(r, 'model_dump') else (r if isinstance(r, dict) else r.__dict__)
+        for r in cached['reviews']
+    ]
+    
+    # 캐시된 리뷰로 새 세션 생성
+    new_session_id = session_store.create_session(
+        category=cached['category'],
+        data_dir=Path("backend/data"),
+        reviews=reviews_dict,
+        product_name=cached['product_name']
+    )
+    
+    # 캐시 업데이트
+    cached['session_id'] = new_session_id
+    logger.info(f"[새 세션 생성] session_id={new_session_id}")
+    
+    # LLM 설정 저장 (캐시 복원 시)
+    provider = settings.LLM_PROVIDER
+    session_configs[new_session_id] = {
+        "provider": provider,
+        "model_name": settings.get_model_name(provider),
+        "api_key": settings.get_api_key(provider)
+    }
+    
+    return CollectReviewsResponse(
+        success=True,
+        session_id=new_session_id,
+        reviews=cached['reviews'],
+        total_count=cached['total_count'],
+        product_name=cached['product_name'],
+        detected_category=cached['category'],
+        category_confidence=cached['confidence'],
+        available_categories=get_available_categories(),
+        suggested_factors=cached.get('suggested_factors', []),
+        message=f"리뷰 {cached['total_count']}건을 불러왔습니다. (캐시)"
+    )
+
+
+def extract_product_name(page_title: Optional[str]) -> Optional[str]:
+    """페이지 제목에서 상품명 추출"""
+    if not page_title:
+        logger.warning(f"[페이지 제목 없음]")
+        return None
+    
+    logger.info(f"[페이지 제목] {page_title}")
+    
+    # "상품명 : 쿠쿠전자" 같은 형식에서 ':' 앞부분 추출
+    if ':' in page_title:
+        product_name = page_title.split(':')[0].strip()
+    else:
+        # ':' 없으면 전체를 상품명으로 (최대 50자)
+        product_name = page_title[:50].strip()
+    
+    logger.info(f"[상품명 추출] {product_name}")
+    return product_name
+
+
+def determine_category(request_category: Optional[str], product_url: str, page_title: Optional[str], 
+                      reviews: Optional[List[Dict]] = None) -> Tuple[Optional[str], str]:
+    """카테고리 결정 (사용자 지정 > URL+제목+리뷰 감지)"""
+    if request_category:
+        logger.info(f"[카테고리 사용자 지정] category={request_category}")
+        return request_category, 'high'
+    
+    category, confidence = detect_category(product_url, page_title, reviews)
+    logger.info(f"[카테고리 감지 결과] category={category}, confidence={confidence}")
+    return category, confidence
+
+
+def create_review_responses(reviews_with_factors: List[Dict]) -> List[Review]:
+    """리뷰 응답 모델 리스트 생성 (Factor 분석 결과 포함)"""
+    review_responses = []
+    
+    for r in reviews_with_factors:
+        factor_match_models = [
+            FactorMatch(
+                factor_id=fm.get('factor_id'),
+                factor_key=fm['factor_key'],
+                display_name=fm['display_name'],
+                sentences=fm['sentences'],
+                matched_terms=fm['matched_terms']
+            )
+            for fm in r.get('factor_matches', [])
+        ]
+        
+        review_responses.append(Review(
+            review_id=r['review_id'],
+            rating=r['rating'],
+            text=r['text'],
+            created_at=r['created_at'],
+            factor_matches=factor_match_models
+        ))
+    
+    return review_responses
+
+
+def aggregate_factors(reviews: List[Review]) -> List[str]:
+    """리뷰에서 후회 팩터 집계하여 상위 5개 반환"""
+    from collections import Counter
+    
+    factor_counter = Counter()
+    
+    for review in reviews:
+        if review.factor_matches:
+            for match in review.factor_matches:
+                factor_counter[match.display_name] += 1
+    
+    # 가장 많이 언급된 상위 5개 팩터 추출
+    top_5_factors = [factor for factor, count in factor_counter.most_common(5)]
+    
+    logger.info(f"[후회 팩터 집계] total_factors={len(factor_counter)}, top_5={top_5_factors}")
+    return top_5_factors
+
+
+def update_cache(cache_key: str, session_id: str, review_responses: List[Review], 
+                product_name: Optional[str], category: str, confidence: str, 
+                suggested_factors: List[str]) -> None:
+    """캐시 업데이트 (LRU 방식)"""
+    if len(review_cache) >= MAX_CACHE_SIZE:
+        # LRU: 가장 오래된 항목 제거
+        oldest_key = min(review_cache.keys(), key=lambda k: review_cache[k]['timestamp'])
+        del review_cache[oldest_key]
+        logger.debug(f"[캐시 정리] 가장 오래된 항목 제거: {oldest_key}")
+    
+    review_cache[cache_key] = {
+        'session_id': session_id,
+        'reviews': review_responses,
+        'total_count': len(review_responses),
+        'product_name': product_name,
+        'category': category,
+        'confidence': confidence,
+        'suggested_factors': suggested_factors,
+        'timestamp': datetime.now()
+    }
+    logger.info(f"[캐시 저장] cache_size={len(review_cache)}")
+
 
 @router.post("/start", response_model=SessionStartResponse)
 async def start_session(request: SessionStartRequest):
@@ -148,18 +373,19 @@ async def send_message(request: ChatRequest):
     """대화 메시지 전송"""
     logger.info(f"[메시지 수신] session_id={request.session_id}, message={request.message[:50]}..., request_finalize={request.request_finalize}")
     
+    # 세션 확인
     session = session_store.get_session(request.session_id)
     if not session:
         logger.warning(f"[세션 없음] session_id={request.session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
     
-    #  feature/api LLMClient 설정
+    # LLMClient 설정 확인
     config = session_configs.get(request.session_id)
     if not config:
         raise HTTPException(status_code=404, detail="LLM 설정이 만료되었습니다. /start를 다시 해주세요.")
     
     try:
-        # 사용자가 분석 종료를 요청한 경우
+        # 대화 진행 또는 종료
         if request.request_finalize:
             logger.info(f"[사용자 요청 종료] session_id={request.session_id}")
             bot_turn = session.finalize_now()
@@ -169,59 +395,15 @@ async def send_message(request: ChatRequest):
         logger.info(f"[대화 진행] session_id={request.session_id}, is_final={bot_turn.is_final}, top_factors={len(bot_turn.top_factors)}")
         logger.info(f"[top_factors 상세] {bot_turn.top_factors[:5]}")
         
-        # 주요 factor에 대한 관련 리뷰 조회
-        related_reviews = {}
-        if bot_turn.top_factors:
-            logger.info(f"[관련 리뷰 조회] top_factors={[f[0] for f in bot_turn.top_factors[:3]]}")
-            # 상위 3개 factor에 대한 리뷰 정보
-            for factor_key, score in bot_turn.top_factors[:3]:
-                review_info = session_store.get_reviews_by_factor(
-                    request.session_id, 
-                    factor_key, 
-                    limit=5  # 3~5건 보여주기
-                )
-                logger.info(f"  - {factor_key}: review_info={review_info}")
-                if review_info['count'] > 0:
-                    related_reviews[factor_key] = review_info
-                    logger.info(f"  - {factor_key}: {review_info['count']}건 발견")
-        else:
-            logger.warning(f"[top_factors 없음] bot_turn.top_factors가 비어있음")
+        # 관련 리뷰 조회
+        related_reviews = get_related_reviews(request.session_id, bot_turn.top_factors)
         
-        # 봇 메시지 구성: 실제 리뷰 문장 먼저 + 다음 질문
-        bot_message = ""
-        question_only = None
-        
-        # ✨ 새로운 흐름: related_reviews는 별도로 전달, 메시지는 질문만
-        if related_reviews and not bot_turn.is_final:
-            logger.info(f"[관련 리뷰 표시] keys={list(related_reviews.keys())}")
-            # 프론트엔드에서 related_reviews를 렌더링하므로 메시지는 질문만
-            bot_message = bot_turn.question_text
-            question_only = bot_turn.question_text
-        else:
-            # 관련 리뷰가 없거나 최종 메시지
-            bot_message = bot_turn.question_text or ""
-        
+        # 봇 메시지 구성
+        bot_message = format_bot_message(bot_turn, related_reviews)
         logger.info(f"[메시지 응답] session_id={request.session_id}, bot_msg_len={len(bot_message) if bot_message else 0}, is_final={bot_turn.is_final}")
         logger.info(f"[related_reviews 상태] keys={list(related_reviews.keys()) if related_reviews else 'None'}")
         
-        # choices가 리스트인 경우 파이프 구분 문자열로 변환
-        choices_str = None
-        if bot_turn.choices and isinstance(bot_turn.choices, list):
-            choices_str = '|'.join(bot_turn.choices)
-        elif bot_turn.choices:
-            choices_str = bot_turn.choices
-        
-        # 분석 완료 가능 여부 판단 (최소 3턴 이상 + 안정성 달성)
-        can_finalize = session.turn_count >= 3 and session.stability_hits >= 2
-        stability_info = None
-        if session.turn_count >= 3:
-            if session.stability_hits >= 3:
-                stability_info = "요인 분석이 충분히 수렴했습니다. 분석을 완료하시겠어요?"
-            elif session.stability_hits >= 2:
-                stability_info = "분석 준비가 거의 완료되었습니다."
-            else:
-                stability_info = "조금 더 대화하면 더 정확한 분석이 가능합니다."
-        
+        # 응답 데이터 구성
         response_data = ChatResponse(
             session_id=request.session_id,
             bot_message=bot_message,
@@ -232,10 +414,10 @@ async def send_message(request: ChatRequest):
             related_reviews=related_reviews,
             question_id=bot_turn.question_id,
             answer_type=bot_turn.answer_type,
-            choices=choices_str,
-            can_finalize=can_finalize,
+            choices=format_choices(bot_turn.choices),
+            can_finalize=session.turn_count >= MIN_FINALIZE_TURNS and session.stability_hits >= MIN_STABILITY_HITS,
             turn_count=session.turn_count,
-            stability_info=stability_info
+            stability_info=get_stability_info(session.turn_count, session.stability_hits)
         )
         
         logger.info(f"[응답 데이터] related_reviews in response: {response_data.related_reviews is not None}")
@@ -244,8 +426,11 @@ async def send_message(request: ChatRequest):
                 logger.info(f"  - {key}: count={val.get('count', 0)}")
         
         return response_data
+        
     except Exception as e:
         logger.error(f"[메시지 처리 실패] session_id={request.session_id}, error={str(e)}", exc_info=True)
+        import traceback
+        logger.error(f"[스택트레이스]\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -255,91 +440,53 @@ async def collect_reviews(request: CollectReviewsRequest):
     cache_key = f"{request.product_url}|{request.max_reviews}|{request.sort_by_low_rating}"
     
     # 캐시 확인
-    if cache_key in review_cache:
-        cached = review_cache[cache_key]
-        cached_session_id = cached.get('session_id')
-        
-        # 세션이 여전히 유효한지 확인
-        if cached_session_id and session_store.get_session(cached_session_id):
-            logger.info(f"[캐시 히트 + 세션 유효] url={request.product_url}, session_id={cached_session_id}")
-            return CollectReviewsResponse(
-                success=True,
-                session_id=cached_session_id,
-                reviews=cached['reviews'],
-                total_count=cached['total_count'],
-                product_name=cached['product_name'],
-                detected_category=cached['category'],
-                category_confidence=cached['confidence'],
-                available_categories=get_available_categories(),
-                message=f"리뷰 {cached['total_count']}건을 불러왔습니다. (캐시)"
-            )
-        else:
-            # 세션이 만료되었지만 리뷰 데이터는 재사용 가능
-            logger.info(f"[캐시 히트 + 세션 만료] url={request.product_url}, 새 세션 생성")
-            
-            # 리뷰 데이터를 딕셔너리로 변환
-            reviews_dict = []
-            for r in cached['reviews']:
-                if hasattr(r, 'model_dump'):  # Pydantic 모델인 경우
-                    review_data = r.model_dump()
-                else:  # 이미 딕셔너리인 경우
-                    review_data = r if isinstance(r, dict) else r.__dict__
-                reviews_dict.append(review_data)
-            
-            # 캐시된 리뷰로 새 세션 생성 (리뷰 포함)
-            category = cached['category']
-            new_session_id = session_store.create_session(
-                category=category,
-                data_dir=Path("backend/data"),
-                reviews=reviews_dict
-            )
-            
-            # 캐시 업데이트 (새 session_id로)
-            cached['session_id'] = new_session_id
-            
-            logger.info(f"[새 세션 생성] session_id={new_session_id}")
-            return CollectReviewsResponse(
-                success=True,
-                session_id=new_session_id,
-                reviews=cached['reviews'],
-                total_count=cached['total_count'],
-                product_name=cached['product_name'],
-                detected_category=cached['category'],
-                category_confidence=cached['confidence'],
-                available_categories=get_available_categories(),
-                message=f"리뷰 {cached['total_count']}건을 불러왔습니다. (캐시)"
-            )
+    cached_response = check_cache(cache_key, request.product_url)
+    if cached_response:
+        return cached_response
     
     logger.info(f"[캐시 미스] 리뷰 수집 시작 - url={request.product_url}, max={request.max_reviews}")
+    
     try:
-        # 리뷰 수집
-        collector = SmartStoreCollector(
-            product_url=request.product_url,
-            headless=True
-        )
-        logger.debug(f"[콜렉터 생성] headless=True")
+        collector = SmartStoreCollector(product_url=request.product_url, headless=True)
         
-        reviews, page_title = collector.collect_reviews(
+        # 카테고리 결정을 위한 사전 수집 (메타데이터만)
+        reviews_preview, page_title = collector.collect_reviews(
+            max_reviews=min(20, request.max_reviews),
+            sort_by_low_rating=request.sort_by_low_rating
+        )
+        
+        # 상품명 추출
+        product_name = extract_product_name(page_title)
+        
+        # 카테고리 결정
+        preview_converted = collector.convert_to_backend_format(reviews_preview) if reviews_preview else []
+        category, confidence = determine_category(
+            request.category, request.product_url, page_title, preview_converted
+        )
+        
+        # 카테고리 감지 실패 시 사용자 선택 요청
+        if confidence == 'failed':
+            logger.warning(f"[카테고리 감지 실패] 사용자에게 선택 요청")
+            return CollectReviewsResponse(
+                success=True,
+                message="카테고리를 선택해주세요.",
+                reviews=[],
+                total_count=0,
+                detected_category=None,
+                category_confidence='failed',
+                available_categories=get_available_categories()
+            )
+        
+        # 리뷰 수집 및 Factor 분석 (전체 파이프라인 - collector가 담당)
+        logger.info(f"[전체 수집 시작] category={category}")
+        result = collector.collect_and_analyze(
+            category=category,
             max_reviews=request.max_reviews,
             sort_by_low_rating=request.sort_by_low_rating
         )
-        logger.info(f"[리뷰 수집 완료] count={len(reviews) if reviews else 0}")
         
-        # 페이지 제목에서 상품명 추출
-        product_name = None
-        if page_title:
-            logger.info(f"[페이지 제목] {page_title}")
-            # "상품명 : 쿠쿠전자" 같은 형식에서 ':' 앞부분 추출
-            if ':' in page_title:
-                product_name = page_title.split(':')[0].strip()
-            else:
-                # ':' 없으면 전체를 상품명으로 (최대 50자)
-                product_name = page_title[:50].strip()
-            logger.info(f"[상품명 추출] {product_name}")
-        else:
-            logger.warning(f"[페이지 제목 없음]")
-        
-        if not reviews:
+        # 리뷰 수집 실패 처리
+        if result['total_count'] == 0:
             logger.warning(f"[리뷰 수집 실패] url={request.product_url}")
             return CollectReviewsResponse(
                 success=False,
@@ -348,96 +495,31 @@ async def collect_reviews(request: CollectReviewsRequest):
                 total_count=0
             )
         
-        # backend 형식으로 변환
-        converted_reviews = collector.convert_to_backend_format(reviews)
-        logger.debug(f"[리뷰 변환 완료] count={len(converted_reviews)}")
+        # Review 응답 모델 생성
+        review_responses = create_review_responses(result['reviews'])
         
-        # 중복 제거 (review_id 기준)
-        seen_ids = set()
-        unique_reviews = []
-        for review in converted_reviews:
-            review_id = review['review_id']
-            if review_id not in seen_ids:
-                seen_ids.add(review_id)
-                unique_reviews.append(review)
+        # 후회 팩터 집계 (상위 5개)
+        suggested_factors = aggregate_factors(review_responses)
         
-        if len(unique_reviews) < len(converted_reviews):
-            logger.info(f"[중복 제거] {len(converted_reviews)}건 → {len(unique_reviews)}건")
-        
-        converted_reviews = unique_reviews
-        
-        # 카테고리 결정: 사용자 지정 > URL+제목+리뷰 감지
-        category = request.category
-        confidence = 'high'
-        
-        if not category:
-            category, confidence = detect_category(request.product_url, page_title, converted_reviews)
-            logger.info(f"[카테고리 감지 결과] category={category}, confidence={confidence}")
-        else:
-            logger.info(f"[카테고리 사용자 지정] category={category}")
-        
-        # 감지 실패 시 카테고리 목록 반환
-        if confidence == 'failed':
-            logger.warning(f"[카테고리 감지 실패] 사용자에게 선택 요청")
-            return CollectReviewsResponse(
-                success=True,
-                message="카테고리를 선택해주세요.",
-                reviews=[],
-                total_count=len(converted_reviews),
-                detected_category=None,
-                category_confidence='failed',
-                available_categories=get_available_categories()
-            )
-        
-        # Factor 분석 추가
-        analyzer = FactorAnalyzer(category=category)
-        logger.debug(f"[Factor 분석 시작] category={category}")
-        
-        # 각 리뷰에 factor 분석 결과 추가
-        for review in converted_reviews:
-            factor_matches = analyzer.analyze_review(review['text'])
-            review['factor_matches'] = factor_matches
-        
-        logger.info(f"[Factor 분석 완료] reviews={len(converted_reviews)}")
-        
-        # 리뷰 응답 생성
-        review_responses = []
-        for r in converted_reviews:
-            factor_match_models = [
-                FactorMatch(
-                    factor_id=fm.get('factor_id'),
-                    factor_key=fm['factor_key'],
-                    display_name=fm['display_name'],
-                    sentences=fm['sentences'],
-                    matched_terms=fm['matched_terms']
-                )
-                for fm in r.get('factor_matches', [])
-            ]
-            
-            review_responses.append(Review(
-                review_id=r['review_id'],
-                rating=r['rating'],
-                text=r['text'],
-                created_at=r['created_at'],
-                factor_matches=factor_match_models
-            ))
-        
-        # 세션 생성 시 리뷰 데이터 함께 전달
-        # Pydantic 모델을 딕셔너리로 변환
-        reviews_dict = []
-        for r in converted_reviews:
-            review_data = r.copy()
-            # factor_matches는 이미 딕셔너리 리스트 형태
-            reviews_dict.append(review_data)
-        
-        # 세션 생성 (리뷰 포함)
+        # 세션 생성
         session_id = session_store.create_session(
             category=category,
             data_dir=Path("backend/data"),
-            reviews=reviews_dict
+            reviews=result['reviews'],
+            product_name=product_name
         )
-        logger.info(f"[세션 생성] session_id={session_id}, category={category}, reviews={len(reviews_dict)}건")
+        logger.info(f"[세션 생성] session_id={session_id}, category={category}, reviews={result['total_count']}건")
         
+        # LLM 설정 저장 (.env의 LLM_PROVIDER 사용)
+        provider = settings.LLM_PROVIDER
+        session_configs[session_id] = {
+            "provider": provider,
+            "model_name": settings.get_model_name(provider),
+            "api_key": settings.get_api_key(provider)
+        }
+        logger.info(f"[LLM 설정 저장] session_id={session_id}, provider={provider}")
+        
+        # 응답 생성
         response = CollectReviewsResponse(
             success=True,
             message=f"리뷰 {len(review_responses)}건을 수집했습니다.",
@@ -447,26 +529,12 @@ async def collect_reviews(request: CollectReviewsRequest):
             detected_category=category,
             category_confidence=confidence,
             available_categories=get_available_categories() if confidence in ['low', 'failed'] else None,
-            product_name=product_name
+            product_name=product_name,
+            suggested_factors=suggested_factors
         )
         
-        # 성공한 경우 캐시에 저장
-        if len(review_cache) >= MAX_CACHE_SIZE:
-            # LRU: 가장 오래된 항목 제거
-            oldest_key = min(review_cache.keys(), key=lambda k: review_cache[k]['timestamp'])
-            del review_cache[oldest_key]
-            logger.debug(f"[캐시 정리] 가장 오래된 항목 제거: {oldest_key}")
-        
-        review_cache[cache_key] = {
-            'session_id': session_id,
-            'reviews': review_responses,
-            'total_count': len(review_responses),
-            'product_name': product_name,
-            'category': category,
-            'confidence': confidence,
-            'timestamp': datetime.now()
-        }
-        logger.info(f"[캐시 저장] cache_size={len(review_cache)}, url={request.product_url}")
+        # 캐시 업데이트
+        update_cache(cache_key, session_id, review_responses, product_name, category, confidence, suggested_factors)
         
         return response
         

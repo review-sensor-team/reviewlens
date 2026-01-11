@@ -2,7 +2,7 @@
 Gemini LLM 클라이언트
 """
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .llm_base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,8 @@ class GeminiClient(BaseLLMClient):
         evidence_reviews: List[Dict[str, Any]],
         total_turns: int,
         category_name: str,
-        product_name: str = "이 제품"
+        product_name: str = "이 제품",
+        dialogue_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
         """최종 분석 요약 생성"""
         
@@ -44,7 +45,7 @@ class GeminiClient(BaseLLMClient):
             return self._get_fallback_summary(top_factors, category_name, product_name)
         
         # 프롬프트 구성
-        prompt = self._build_prompt(top_factors, evidence_reviews, total_turns, category_name, product_name)
+        prompt = self._build_prompt(top_factors, evidence_reviews, total_turns, category_name, product_name, dialogue_history)
         
         try:
             response = self.client.generate_content(
@@ -69,7 +70,8 @@ class GeminiClient(BaseLLMClient):
         evidence_reviews: List[Dict[str, Any]],
         total_turns: int,
         category_name: str,
-        product_name: str
+        product_name: str,
+        dialogue_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
         """프롬프트 구성"""
         
@@ -79,37 +81,64 @@ class GeminiClient(BaseLLMClient):
             for i, (factor_key, score) in enumerate(top_factors[:5])
         ])
         
-        # 증거 리뷰 요약 (상위 5개)
+        # 대화 내용 정리
+        dialogue_text = ""
+        if dialogue_history:
+            dialogue_lines = []
+            for turn in dialogue_history:
+                role = turn.get('role', '')
+                text = turn.get('message', '')
+                if role == 'user':
+                    dialogue_lines.append(f"사용자: {text}")
+                elif role == 'assistant':
+                    dialogue_lines.append(f"어시스턴트: {text}")
+            dialogue_text = "\n".join(dialogue_lines)
+        
+        # 모든 증거 리뷰 포함 (상위 5개가 아닌 전체)
         evidence_text = ""
-        for i, rev in enumerate(evidence_reviews[:5], 1):
+        for i, rev in enumerate(evidence_reviews, 1):
             label = rev.get('label', 'NEU')
             rating = rev.get('rating', 0)
-            excerpt = rev.get('excerpt', '')[:100]  # 100자로 제한
-            evidence_text += f"{i}. [{label}] {rating}점 - {excerpt}...\n"
+            excerpt = rev.get('excerpt', '')  # 전체 리뷰 내용 사용
+            evidence_text += f"{i}. [{label}] {rating}점 - {excerpt}\n"
         
-        prompt = f"""당신은 제품 리뷰 분석 전문가입니다.
-
-**제품 정보**
-- 카테고리: {category_name}
-- 제품명: {product_name}
-- 분석 대화 턴: {total_turns}턴
-
-**주요 후회 요인 (상위 5개)**
-{factors_text}
-
-**증거 리뷰 예시 (상위 5개)**
-{evidence_text}
-
-위 분석 결과를 바탕으로 **구매자에게 도움이 되는 최종 요약**을 작성해주세요.
-
-다음 형식으로 작성:
-1. 핵심 후회 요인 설명 (2-3문장)
-2. 구매 전 체크포인트 (3-5개 항목, 각 1-2문장)
-3. 한 줄 조언
-
-**톤앤매너**: 친근하지만 전문적, 구체적이고 실용적
-**길이**: 300-500자
-"""
+        # Prompt 구성
+        prompt_parts = [
+            "당신은 제품 리뷰 분석 전문가입니다.",
+            "",
+            "**제품 정보**",
+            f"- 카테고리: {category_name}",
+            f"- 제품명: {product_name}",
+            f"- 분석 대화 턴: {total_turns}턴",
+            ""
+        ]
+        
+        if dialogue_text:
+            prompt_parts.extend([
+                "**대화 내용**",
+                dialogue_text,
+                ""
+            ])
+        
+        prompt_parts.extend([
+            "**주요 후회 요인 (상위 5개)**",
+            factors_text,
+            "",
+            f"**증거 리뷰 전체 ({len(evidence_reviews)}개)**",
+            evidence_text,
+            "",
+            "위 분석 결과를 바탕으로 **구매자에게 도움이 되는 최종 요약**을 작성해주세요.",
+            "",
+            "다음 형식으로 작성:",
+            "1. 핵심 후회 요인 설명 (2-3문장)",
+            "2. 구매 전 체크포인트 (3-5개 항목, 각 1-2문장)",
+            "3. 한 줄 조언",
+            "",
+            "**톤앤매너**: 친근하지만 전문적, 구체적이고 실용적",
+            "**길이**: 300-500자"
+        ])
+        
+        prompt = "\n".join(prompt_parts)
         return prompt
     
     def _get_fallback_summary(self, top_factors: List[tuple], category_name: str, product_name: str) -> str:

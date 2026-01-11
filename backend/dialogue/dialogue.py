@@ -52,9 +52,10 @@ def _jaccard(a: List[str], b: List[str]) -> float:
 class DialogueSession:
     """3~5턴 대화 세션(수렴 로직: top3 Jaccard 기반)"""
 
-    def __init__(self, category: str, data_dir: str | Path, reviews_df: Optional[pd.DataFrame] = None):
+    def __init__(self, category: str, data_dir: str | Path, reviews_df: Optional[pd.DataFrame] = None, product_name: Optional[str] = None):
         self.category = category
         self.data_dir = Path(data_dir)
+        self.product_name = product_name or "이 제품"  # 제품명 저장
 
         self.turn_count = 0
         self.cumulative_scores: Dict[str, float] = {}
@@ -74,7 +75,7 @@ class DialogueSession:
         dialogue_sessions_total.labels(category=category).inc()
 
         # Load data
-        logger.info(f"[DialogueSession 초기화] category={category}, data_dir={data_dir}, custom_reviews={reviews_df is not None}")
+        logger.info(f"[DialogueSession 초기화] category={category}, data_dir={data_dir}, custom_reviews={reviews_df is not None}, product_name={product_name}")
         
         if reviews_df is not None:
             # 외부에서 제공한 리뷰 사용 (세션별 수집 리뷰)
@@ -153,9 +154,9 @@ class DialogueSession:
         logger.debug(f"  - 안정성: sim={sim:.2f}, hits={self.stability_hits}")
 
         # 4) 분석 준비 여부 체크
-        # - 최소 3턴 이상 + 안정성 2회 이상 달성 시 분석 결과 제공
+        # - 최소 3턴 이상이면 분석 결과 제공 (안정성 조건 제거)
         # - 분석 제공 후에도 대화는 계속 가능
-        should_provide_analysis = (self.turn_count >= 3 and self.stability_hits >= 2)
+        should_provide_analysis = (self.turn_count >= 3)
         logger.info(f"  - 분석 체크: should_provide_analysis={should_provide_analysis} (turn={self.turn_count}, stability={self.stability_hits})")
 
         # 5) 다음 질문 1개 생성 (분석 제공 여부와 무관하게 항상 생성)
@@ -214,6 +215,7 @@ class DialogueSession:
         """
         # 질문 리스트가 없으면 기본 질문
         if not self.questions:
+            logger.debug(f"  - 질문 DB 없음, fallback 사용")
             return self._fallback_question()
 
         # "집중 수렴" 전략:
@@ -221,15 +223,20 @@ class DialogueSession:
         # - turn 3부터: top1에 더 집중
         focus = 2 if self.turn_count <= 2 else 1
         focus_factors = [k for k, _ in top_factors[:focus]]
+        logger.debug(f"  - focus_factors: {focus_factors} (turn={self.turn_count})")
 
         candidates: List[Tuple[int, str, str, str, Optional[List[str]]]] = []  # (prio, q_text, q_id, answer_type, choices)
         for factor_key in focus_factors:
             # factor_key로 Factor 객체 찾기
             factor_obj = self.factors_map.get(factor_key)
             if not factor_obj:
+                logger.debug(f"    - factor_key '{factor_key}' not in factors_map")
                 continue
             
+            logger.debug(f"    - factor '{factor_key}' (id={factor_obj.factor_id}) 질문 검색 중...")
+            
             # factor_id로 매칭되는 질문들 찾기
+            matched_count = 0
             for question in self.questions:
                 # factor_id로 매칭
                 if question.factor_id != factor_obj.factor_id:
@@ -238,8 +245,11 @@ class DialogueSession:
                     if not question.factor_key.startswith(prefix):
                         continue
                 
+                matched_count += 1
+                
                 # 이미 물어본 질문은 제외
                 if question.question_text in self.asked_questions:
+                    logger.debug(f"      - 질문 '{question.question_text[:30]}...' 이미 물어봄")
                     continue
 
                 # question_id를 우선순위로 사용 (낮은 숫자가 우선)
@@ -251,6 +261,9 @@ class DialogueSession:
                     choices = [c.strip() for c in question.choices.split("|") if c.strip()]
                 
                 candidates.append((prio, question.question_text, str(question.question_id), question.answer_type, choices))
+                logger.debug(f"      ✓ 후보 추가: q_id={question.question_id}, '{question.question_text[:30]}...'")
+            
+            logger.debug(f"    - factor '{factor_key}' 매칭 질문: {matched_count}개")
 
         # 우선순위 낮은 숫자 먼저
         candidates.sort(key=lambda x: x[0])
@@ -258,8 +271,10 @@ class DialogueSession:
         if candidates:
             _, picked_text, picked_id, picked_type, picked_choices = candidates[0]
             self.asked_questions.add(picked_text)
+            logger.debug(f"  - 선택된 질문: q_id={picked_id}, '{picked_text[:30]}...'")
             return picked_text, picked_id, picked_type, picked_choices
 
+        logger.debug(f"  - 후보 질문 없음, fallback 사용 (asked_questions={len(self.asked_questions)}개)")
         return self._fallback_question()
 
     def _fallback_question(self) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
@@ -277,7 +292,12 @@ class DialogueSession:
             if q not in self.asked_questions:
                 self.asked_questions.add(q)
                 return q, None, None, None
-        return "추가로 고려하시는 부분이 있나요?", None, None, None
+        
+        # 모든 기본 질문을 다 했으면, 마지막 질문 반환 (반복 방지)
+        final_question = "추가로 고려하시는 부분이 있나요?"
+        if final_question not in self.asked_questions:
+            self.asked_questions.add(final_question)
+        return final_question, None, None, None
 
     def _generate_analysis(self, top_factors: List[Tuple[str, float]]) -> Dict:
         """분석 결과 생성 (대화 종료 없이)"""
@@ -304,7 +324,7 @@ class DialogueSession:
             )
         
         # 메트릭: evidence 수 기록
-        total_evidence = sum(len(ev_list) for ev_list in evidence.values())
+        total_evidence = len(evidence)
         evidence_count.labels(category=self.category).observe(total_evidence)
 
         # 3) LLM 최종 요약 생성
@@ -490,7 +510,10 @@ class DialogueSession:
         try:
             from ..llm.llm_factory import get_llm_client
             from ..core.metrics import llm_calls_total, llm_duration_seconds, Timer
-            from ..core.settings import settings
+            from ..app.core.settings import settings
+            import json
+            from datetime import datetime
+            from pathlib import Path
             
             # 카테고리 이름 가져오기
             category_names = {
@@ -499,6 +522,7 @@ class DialogueSession:
                 "appliance_induction": "인덕션",
                 "appliance_bedding_cleaner": "침구청소기",
                 "humidifier": "가습기",
+                "appliance_heated_humidifier": "가열식 가습기",
                 "furniture_bookshelf": "책장",
                 "furniture_chair": "의자",
                 "furniture_desk": "책상",
@@ -510,6 +534,29 @@ class DialogueSession:
             # 제품명 (세션에 저장되어 있다면 가져오기, 없으면 기본값)
             product_name = getattr(self, 'product_name', "이 제품")
             
+            # LLM 컨텍스트 준비
+            llm_context = {
+                "top_factors": top_factors,
+                "evidence_reviews": evidence_reviews,
+                "total_turns": self.turn_count,
+                "category_name": category_name,
+                "product_name": product_name,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # 타임스탬프 생성
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # out 디렉토리 생성
+            out_dir = Path("out")
+            out_dir.mkdir(exist_ok=True)
+            
+            # LLM 컨텍스트 저장
+            context_file = out_dir / f"llm_context_{timestamp}.json"
+            with open(context_file, "w", encoding="utf-8") as f:
+                json.dump(llm_context, f, ensure_ascii=False, indent=2)
+            logger.info(f"[LLM 컨텍스트 저장] {context_file}")
+            
             llm_client = get_llm_client()
             provider = settings.LLM_PROVIDER
             
@@ -520,7 +567,8 @@ class DialogueSession:
                     evidence_reviews=evidence_reviews,
                     total_turns=self.turn_count,
                     category_name=category_name,
-                    product_name=product_name
+                    product_name=product_name,
+                    dialogue_history=self.dialogue_history
                 )
             
             # 메트릭: LLM 호출 성공
@@ -530,11 +578,13 @@ class DialogueSession:
             return summary
             
         except Exception as e:
-            logger.error(f"[LLM 요약 생성 실패] {e}")
+            logger.error(f"[LLM 요약 생성 실패] {e}", exc_info=True)
+            import traceback
+            logger.error(f"[스택트레이스]\n{traceback.format_exc()}")
             
             # 메트릭: LLM 호출 에러 (provider 정보 시도)
             try:
-                from ..core.settings import settings
+                from ..app.core.settings import settings
                 provider = settings.LLM_PROVIDER
             except:
                 provider = 'unknown'
