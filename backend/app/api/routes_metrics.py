@@ -3,7 +3,7 @@
 Prometheus가 스크랩할 메트릭 노출
 """
 from fastapi import APIRouter, Response
-from ..core.metrics import get_metrics
+from backend.core.metrics import get_metrics
 
 router = APIRouter()
 

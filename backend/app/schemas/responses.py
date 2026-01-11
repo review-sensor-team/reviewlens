@@ -69,3 +69,5 @@ class CollectReviewsResponse(BaseModel):
     product_name: Optional[str] = None
     # 상품 정보
     product_name: Optional[str] = None  # 페이지 제목에서 추출한 상품명
+    # 추천 후회 팩터 (상위 5개)
+    suggested_factors: Optional[List[str]] = None
