@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     #Feature/api LLM Configurations
     GOOGLE_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    
+    # LLM Provider 설정 (.env에서 읽어옴)
+    LLM_PROVIDER: str = "openai"
+    
+    # 각 프로바이더별 모델명 (.env에서 읽어옴)
+    OPENAI_MODEL: Optional[str] = None
+    GEMINI_MODEL: Optional[str] = None
+    CLAUDE_MODEL: Optional[str] = None
 
     #LLM Common parameters
     LLM_TEMPERATURE: float = 0.6
@@ -41,11 +50,23 @@ class Settings(BaseSettings):
 
     #API Key Getter
     def get_api_key(self, provider: str) -> Optional[str]:
-        if provider == 'google':
+        if provider == 'google' or provider == 'gemini':
             return self.GOOGLE_API_KEY
         elif provider == 'openai':
             return self.OPENAI_API_KEY
+        elif provider == 'anthropic' or provider == 'claude':
+            return self.ANTHROPIC_API_KEY
         return None
+    
+    def get_model_name(self, provider: str) -> str:
+        """프로바이더별 모델명 반환"""
+        if provider == 'openai':
+            return self.OPENAI_MODEL or "gpt-4o-mini"
+        elif provider == 'google' or provider == 'gemini':
+            return self.GEMINI_MODEL or "gemini-1.5-flash"
+        elif provider == 'anthropic' or provider == 'claude':
+            return self.CLAUDE_MODEL or "claude-3-5-sonnet-20241022"
+        return "gpt-4o-mini"  # 기본값
     
     model_config = ConfigDict(
         env_file=".env",

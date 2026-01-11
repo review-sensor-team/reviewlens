@@ -8,11 +8,11 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from .pipeline.reg_store import load_csvs, parse_factors, parse_questions, Factor, Question
-from .pipeline.ingest import dedupe_reviews
-from .pipeline.sensor import compute_review_factor_scores, select_top_factors_from_question
-from .pipeline.retrieval import retrieve_evidence_reviews
-from .pipeline.prompt_builder import write_llm_context, write_debug_report
+from .dialogue.reg_store import load_csvs, parse_factors, parse_questions, Factor, Question
+from .dialogue.ingest import dedupe_reviews
+from .dialogue.sensor import compute_review_factor_scores, select_top_factors_from_question
+from .dialogue.retrieval import retrieve_evidence_reviews
+from .dialogue.prompt_builder import write_llm_context, write_debug_report
 
 
 def pick_next_questions(

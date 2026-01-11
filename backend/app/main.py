@@ -11,7 +11,7 @@ from .api import routes_chat
 from .api import routes_metrics
 from .core.settings import settings
 from .core.logging_config import setup_logging
-from .core.metrics import (
+from backend.core.metrics import (
     http_requests_total,
     http_request_duration_seconds,
 )
