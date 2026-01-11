@@ -59,41 +59,22 @@ def get_llm_client() -> BaseLLMClient:
     Returns:
         BaseLLMClient: 설정된 LLM 클라이언트
     """
-    from ..core.settings import (
-        LLM_PROVIDER,
-        GEMINI_API_KEY,
-        OPENAI_API_KEY,
-        ANTHROPIC_API_KEY,
-        GEMINI_MODEL,
-        OPENAI_MODEL,
-        CLAUDE_MODEL,
-        LLM_TEMPERATURE,
-        LLM_MAX_TOKENS
-    )
+    from ..app.core.settings import settings
     
-    # API 키 선택
-    api_keys = {
-        "gemini": GEMINI_API_KEY,
-        "openai": OPENAI_API_KEY,
-        "claude": ANTHROPIC_API_KEY
-    }
+    # API 키 및 모델 가져오기
+    provider = settings.LLM_PROVIDER
+    api_key = settings.get_api_key(provider)
+    model = settings.get_model_name(provider)
     
-    # 모델 선택
-    models = {
-        "gemini": GEMINI_MODEL,
-        "openai": OPENAI_MODEL,
-        "claude": CLAUDE_MODEL
-    }
+    if not api_key:
+        raise ValueError(f"{provider} API 키가 설정되지 않았습니다.")
     
-    api_key = api_keys.get(LLM_PROVIDER, "")
-    model = models.get(LLM_PROVIDER)
-    
-    logger.info(f"LLM 클라이언트 생성: provider={LLM_PROVIDER}, model={model}, has_key={bool(api_key)}")
+    logger.info(f"LLM 클라이언트 생성: provider={provider}, model={model}, has_key={bool(api_key)}")
     
     return LLMFactory.create_client(
-        provider=LLM_PROVIDER,
+        provider=provider,
         api_key=api_key,
         model=model,
-        temperature=LLM_TEMPERATURE,
-        max_tokens=LLM_MAX_TOKENS
+        temperature=settings.LLM_TEMPERATURE,
+        max_tokens=settings.LLM_MAX_TOKENS
     )
