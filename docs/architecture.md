@@ -592,43 +592,67 @@ f"""
 
 ## 모니터링 계층
 
+> 📊 상세 문서: [MONITORING_ARCHITECTURE.md](MONITORING_ARCHITECTURE.md)
+
+### 아키텍처 개요
+
+ReviewLens는 **Prometheus + Grafana** 기반 관측성 스택을 사용하여 애플리케이션의 성능, 신뢰성, 사용자 경험을 실시간으로 추적합니다.
+
+**핵심 특징**:
+- ✅ 자동 메트릭 수집 (미들웨어 기반)
+- ✅ 최소 침투성 (비즈니스 로직 영향 없음)
+- ✅ Docker와 로컬 바이너리 모두 지원
+- ✅ 실시간 대시보드 (10-15초 간격)
+- ✅ 커스텀 메트릭 Registry 사용
+
 ### Metrics 수집 구조
 
 ```mermaid
 graph TB
-    subgraph "애플리케이션 Layer"
-        A1[FastAPI Middleware] -->|HTTP 메트릭| M1[Metrics Registry]
-        A2[DialogueSession] -->|대화 메트릭| M1
-        A3[Retrieval Pipeline] -->|성능 메트릭| M1
-        A4[LLM Client] -->|API 메트릭| M1
+    subgraph "Application Layer"
+        A1[FastAPI Server<br/>:8000]
+        A2[MetricsMiddleware<br/>자동 HTTP 추적]
+        A3[Dialogue Engine]
+        A4[LLM Clients<br/>Gemini/OpenAI/Claude]
+        
+        A2 -.-> A1
+        A1 --> A3
+        A3 --> A4
     end
     
-    subgraph "Metrics Registry"
-        M1 --> M2[Counter<br/>http_requests_total]
-        M1 --> M3[Histogram<br/>http_request_duration_seconds]
-        M1 --> M4[Histogram<br/>retrieval_duration_seconds]
-        M1 --> M5[Counter<br/>llm_calls_total]
-        M1 --> M6[Histogram<br/>evidence_count]
+    subgraph "Metrics Registry (backend/core/metrics.py)"
+        M1[HTTP Metrics<br/>Counter/Histogram]
+        M2[Dialogue Metrics<br/>Counter/Gauge]
+        M3[LLM Metrics<br/>Counter/Histogram]
+        M4[Pipeline Metrics<br/>Histogram]
+        M5[Error Metrics<br/>Counter]
+        
+        A2 --> M1
+        A3 --> M2
+        A4 --> M3
+        A3 --> M4
+        A1 & A3 & A4 --> M5
     end
     
-    subgraph "Prometheus"
-        P1[Scraper<br/>15초 간격]
-        P2[TSDB<br/>시계열 저장]
-        P3[PromQL Engine]
+    subgraph "Prometheus (:9090)"
+        P1[Scraper<br/>10-15초 간격]
+        P2[TSDB<br/>시계열 DB]
+        P3[PromQL Engine<br/>쿼리 엔진]
+        
+        M1 & M2 & M3 & M4 & M5 -->|/metrics endpoint| P1
+        P1 --> P2
+        P2 --> P3
     end
     
-    subgraph "Grafana"
-        G1[Dashboard<br/>12개 패널]
-        G2[Query Builder]
-        G3[Alerting]
+    subgraph "Grafana (:3001)"
+        G1[Dashboards<br/>3개 제공]
+        G2[Auto-provisioning<br/>데이터소스/대시보드]
+        G3[Alerting<br/>선택사항]
+        
+        P3 -->|PromQL queries| G1
+        G2 --> G1
+        G1 --> G3
     end
-    
-    M2 & M3 & M4 & M5 & M6 -->|/metrics| P1
-    P1 --> P2
-    P2 --> P3
-    P3 --> G2
-    G2 --> G1
-    G2 --> G3
     
     style M1 fill:#e1f5dd
     style P2 fill:#fff4e6
@@ -637,71 +661,248 @@ graph TB
 
 ### 주요 메트릭 정의
 
-```mermaid
-graph LR
-    subgraph "HTTP Metrics"
-        H1[http_requests_total<br/>Counter]
-        H2[http_request_duration_seconds<br/>Histogram]
-    end
-    
-    subgraph "Business Metrics"
-        B1[dialogue_sessions_total<br/>Counter]
-        B2[dialogue_turns_total<br/>Counter]
-        B3[dialogue_completions_total<br/>Counter]
-    end
-    
-    subgraph "Performance Metrics"
-        P1[retrieval_duration_seconds<br/>Histogram]
-        P2[scoring_duration_seconds<br/>Histogram]
-        P3[evidence_count<br/>Histogram]
-    end
-    
-    subgraph "LLM Metrics"
-        L1[llm_calls_total<br/>Counter]
-        L2[llm_duration_seconds<br/>Histogram]
-    end
-    
-    subgraph "Error Metrics"
-        E1[errors_total<br/>Counter]
-    end
-    
-    style B1 fill:#c8e6c9
-    style P1 fill:#fff9c4
-    style L1 fill:#bbdefb
-    style E1 fill:#ffcdd2
+#### 1. HTTP 메트릭 (자동 수집)
+
+**`http_requests_total`** (Counter)
+```python
+# 레이블: method, endpoint, status_code
+# 사용: 요청 수, RPS, 에러율 계산
+http_requests_total.labels(
+    method="POST",
+    endpoint="/api/chat/message",
+    status_code="200"
+).inc()
 ```
 
-### 계측 포인트
+**`http_request_duration_seconds`** (Histogram)
+```python
+# 레이블: method, endpoint
+# Buckets: 0.01s ~ 10.0s (8단계)
+# 사용: p50/p95/p99 latency 계산
+http_request_duration_seconds.labels(
+    method="POST",
+    endpoint="/api/chat/message"
+).observe(0.234)  # 234ms
+```
+
+#### 2. 대화 시스템 메트릭
 
 ```python
-# 1. HTTP 요청 (미들웨어)
-class MetricsMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        start = time.time()
-        response = await call_next(request)
-        duration = time.time() - start
-        
-        http_requests_total.labels(
-            method=request.method,
-            endpoint=request.url.path,
-            status_code=response.status_code
-        ).inc()
-        
-        http_request_duration_seconds.labels(...).observe(duration)
+# 세션 생성
+dialogue_sessions_total.labels(category='robot_cleaner').inc()
 
-# 2. 대화 단계
-dialogue_sessions_total.labels(category=category).inc()
-dialogue_turns_total.labels(category=category).inc()
+# 대화 턴
+dialogue_turns_total.labels(category='robot_cleaner').inc()
 
-# 3. 파이프라인 성능
+# 대화 완료
+dialogue_completions_total.labels(category='robot_cleaner').inc()
+
+# Evidence 수집
+evidence_count.labels(category='robot_cleaner').observe(15)
+active_evidence_gauge.labels(
+    category='robot_cleaner',
+    session_id='abc123'
+).set(15)
+```
+
+#### 3. LLM API 메트릭
+
+```python
+# API 호출
+llm_calls_total.labels(
+    provider='gemini',
+    status='success'  # success/error/fallback
+).inc()
+
+# 응답 시간
+with Timer(llm_duration_seconds, {'provider': 'gemini'}):
+    response = client.generate_content(prompt)
+
+# 토큰 사용량
+llm_tokens_total.labels(provider='gemini', type='prompt').inc(150)
+llm_tokens_total.labels(provider='gemini', type='completion').inc(500)
+```
+
+#### 4. 파이프라인 메트릭
+
+```python
+# Retrieval 성능
 with Timer(retrieval_duration_seconds, {'category': category}):
     evidence = retrieve_evidence_reviews(...)
 
-# 4. LLM 호출
-with Timer(llm_duration_seconds, {'provider': provider}):
-    summary = llm_client.generate_summary(...)
-llm_calls_total.labels(provider=provider, status='success').inc()
+# Scoring 성능
+with Timer(scoring_duration_seconds, {'category': category}):
+    scores = calculate_factor_scores(...)
 ```
+
+#### 5. 에러 추적
+
+```python
+# 에러 발생 시
+errors_total.labels(
+    error_type='llm_timeout',
+    component='llm_client'
+).inc()
+```
+
+### 메트릭 엔드포인트
+
+**구현** ([backend/app/api/routes_metrics.py](../backend/app/api/routes_metrics.py)):
+```python
+@router.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus 메트릭 엔드포인트"""
+    metrics_data = get_metrics()  # backend.core.metrics.get_metrics()
+    return Response(
+        content=metrics_data,
+        media_type="text/plain; version=0.0.4; charset=utf-8"
+    )
+```
+
+**출력 예시** (http://localhost:8000/metrics):
+```prometheus
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{endpoint="/api/chat/start",method="POST",status_code="200"} 15.0
+http_requests_total{endpoint="/api/chat/message",method="POST",status_code="200"} 47.0
+
+# HELP http_request_duration_seconds HTTP request latency in seconds
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{endpoint="/api/chat/message",method="POST",le="0.01"} 2.0
+http_request_duration_seconds_bucket{endpoint="/api/chat/message",method="POST",le="0.05"} 12.0
+...
+```
+
+### Prometheus 설정
+
+**로컬 개발** ([monitoring/prometheus.yml](../monitoring/prometheus.yml)):
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'reviewlens-backend'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['localhost:8000']
+```
+
+**Docker 환경** ([monitoring/prometheus/prometheus.yml](../monitoring/prometheus/prometheus.yml)):
+```yaml
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: 'reviewlens-api'
+    static_configs:
+      - targets: ['host.docker.internal:8000']  # Docker → 호스트
+```
+
+### Grafana 대시보드
+
+**제공 대시보드**:
+1. **reviewlens_dashboard.json** - 기본 성능 대시보드
+   - HTTP 요청 속도 (RPS)
+   - HTTP Latency (p50/p95/p99)
+   - 에러율 (4xx/5xx)
+   - 대화 세션/턴 추세
+   
+2. **reviewlens-demo-kr.json** - 데모 시나리오용
+   - 사용자 여정 추적
+   - 실시간 대화 플로우
+   
+3. **reviewlens-production-kr-v2.json** - 프로덕션 모니터링
+   - SLA 추적
+   - 알림 개요
+   - 리소스 사용량
+
+**자동 프로비저닝**:
+- 데이터소스: Prometheus 자동 연결
+- 대시보드: 시작 시 자동 로드
+- 설정: [monitoring/grafana/provisioning/](../monitoring/grafana/provisioning/)
+
+### 배포 옵션
+
+| 방식 | 명령어 | 용도 |
+|------|--------|------|
+| **로컬 바이너리** | `./scripts/start_monitoring.sh` | 개발 환경 (빠른 시작) |
+| **Docker Compose** | `docker-compose -f docker-compose.monitoring.yml up -d` | 스테이징/프로덕션 |
+
+**파일 구조**:
+```
+monitoring/
+├── prometheus.yml              # 로컬용
+├── prometheus/
+│   └── prometheus.yml         # Docker용
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/
+│   │   │   └── prometheus.yml # 자동 데이터소스 설정
+│   │   └── dashboards/
+│   │       └── dashboard.yml  # 대시보드 프로비저닝
+│   └── dashboards/
+│       ├── reviewlens_dashboard.json
+│       ├── reviewlens-demo-kr.json
+│       └── reviewlens-production-kr-v2.json
+scripts/
+├── start_monitoring.sh        # 로컬 시작 스크립트
+└── stop_monitoring.sh         # 로컬 종료 스크립트
+```
+
+### PromQL 쿼리 예시
+
+```promql
+# 초당 요청 수 (RPS)
+rate(http_requests_total[1m])
+
+# p95 Latency
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# 에러율
+sum(rate(http_requests_total{status_code=~"[45].."}[5m])) / 
+sum(rate(http_requests_total[5m])) * 100
+
+# 세션당 평균 턴 수
+sum(rate(dialogue_turns_total[1h])) / 
+sum(rate(dialogue_sessions_total[1h]))
+
+# LLM 토큰 사용량 (시간당)
+rate(llm_tokens_total[1h]) * 3600
+
+# Provider별 LLM p95 latency
+histogram_quantile(0.95, 
+  sum by (provider, le) (rate(llm_duration_seconds_bucket[5m]))
+)
+```
+
+### 성능 최적화
+
+**메트릭 카디널리티 관리**:
+```python
+# ❌ 나쁜 예: session_id를 레이블로 사용 (무한 증가)
+dialogue_turns_total.labels(session_id=session_id).inc()
+
+# ✅ 좋은 예: category만 레이블로
+dialogue_turns_total.labels(category=category).inc()
+logger.info(f"Turn recorded for session {session_id}")
+```
+
+**Histogram Bucket 최적화**:
+- HTTP 요청: `(0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0)`
+- LLM API: `(0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0)`
+
+**Retention 정책**:
+- 개발: 7-15일
+- 프로덕션: 30-90일
+- 장기 저장: Thanos, Cortex 등 활용
+
+### 접속 정보
+
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3001 (admin/admin)
+- **Metrics Endpoint**: http://localhost:8000/metrics
 
 ---
 

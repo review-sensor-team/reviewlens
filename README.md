@@ -166,13 +166,13 @@ frontend/
 - 대화형 시나리오 검증 완료
 
 ### 🚧 진행 중
-- LLM API 통합 (OpenAI/Claude)
-- 데이터베이스 연동 (Redis/PostgreSQL)
+- UI/UX 디자인 적용
+- LLM API 통합
 
 ### 📋 계획 중
-- LLM Integration (OpenAI/Claude API)
-- Production deployment
-- Database persistence (PostgreSQL/Redis)
+- LLM 프롬프트 최적화
+- 벡터 기반 후회 리뷰 추출
+- 멀티 카테고리 확장
 
 ---
 
@@ -216,6 +216,22 @@ npm run dev
 # http://localhost:5173
 ```
 
+### 6. 모니터링 시작 (선택사항)
+```bash
+# Docker로 Prometheus + Grafana 시작
+docker-compose -f docker-compose.monitoring.yml up -d
+
+# 또는 로컬 바이너리로 시작
+./scripts/start_monitoring.sh
+
+# 접속:
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3001 (admin/admin)
+# - Metrics: http://localhost:8000/metrics
+```
+
+> 📊 모니터링 상세 가이드: [MONITORING.md](MONITORING.md)
+
 ---
 
 ## 현재 구현 범위 (MVP)
@@ -229,6 +245,11 @@ npm run dev
 - ✅ 타임스탬프 기반 파일 저장
 - ✅ Safety rules 포함
 - ✅ Vue.js 챗봇 UI (모바일 반응형)
+- ✅ **Prometheus + Grafana 모니터링 스택**
+  - HTTP 요청 메트릭 (latency, throughput, error rate)
+  - 대화 세션/턴 추적
+  - LLM API 성능 모니터링
+  - 파이프라인 단계별 latency 측정
 
 ---
 
