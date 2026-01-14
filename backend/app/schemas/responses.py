@@ -22,3 +22,12 @@ class ChatResponse(BaseModel):
     is_final: bool
     top_factors: List[FactorScore]
     llm_context: Optional[Dict] = None
+
+
+
+class URLResponse(BaseModel):
+    """URL 응답"""
+    url: str
+    status: str
+    error_message: str
+    content_summary: Optional[str] = None
