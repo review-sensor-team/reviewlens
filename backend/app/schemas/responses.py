@@ -38,7 +38,7 @@ class ChatResponse(BaseModel):
 
 class FactorMatch(BaseModel):
     """Factor 매칭 정보"""
-    factor_id: Optional[int] = None  # 추가: factor_id (옵셔널, 하위 호환)
+    factor_id: Optional[int] = None
     factor_key: str
     display_name: str
     sentences: List[str]
@@ -65,9 +65,16 @@ class CollectReviewsResponse(BaseModel):
     # 카테고리 정보
     detected_category: Optional[str] = None
     category_confidence: str = "high"  # 'high' | 'low' | 'failed'
-    available_categories: Optional[List[Dict[str, str]]] = None  # [{'key': 'appliance_induction', 'name': '인덕션'}]
-    product_name: Optional[str] = None
+    available_categories: Optional[List[Dict[str, str]]] = None
     # 상품 정보
     product_name: Optional[str] = None  # 페이지 제목에서 추출한 상품명
     # 추천 후회 팩터 (상위 5개)
     suggested_factors: Optional[List[str]] = None
+
+
+class URLResponse(BaseModel):
+    """URL 응답"""
+    url: str
+    status: str
+    error_message: str
+    content_summary: Optional[str] = None

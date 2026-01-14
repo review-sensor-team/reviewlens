@@ -23,3 +23,7 @@ class CollectReviewsRequest(BaseModel):
     max_reviews: int = 100
     sort_by_low_rating: bool = True
     category: Optional[str] = None  # 사용자가 카테고리를 직접 지정할 수 있음
+
+class UrlCheckRequest(BaseModel):
+    """URL 접속 테스트 요청"""
+    url: str
