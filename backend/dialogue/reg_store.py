@@ -2,6 +2,7 @@
 """REG Store: Load and parse regret factor definitions"""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
@@ -37,7 +38,8 @@ class Question:
 
 
 def load_csvs(data_dir: Path) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """REG CSV 파일들 로드"""
+    """REG CSV 파일들 로드 (버전 자동 감지)"""
+    
     def find_file(root: Path, name: str) -> Path:
         matches = list(root.rglob(name))
         if not matches:
@@ -50,8 +52,64 @@ def load_csvs(data_dir: Path) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
             if matches:
                 return matches[0]
         raise FileNotFoundError(f"None of candidate files found under {root}: {candidates}")
+    
+    def find_latest_versioned_file(root: Path, base_pattern: str) -> Path:
+        """
+        버전 번호가 포함된 파일 중 최신 버전을 찾음
+        예: reg_factor_v4.csv, reg_factor_v3.csv -> reg_factor_v4.csv 선택
+        """
+        # 패턴에서 확장자 분리
+        if base_pattern.endswith('.csv'):
+            base_name = base_pattern[:-4]  # .csv 제거
+            extension = '.csv'
+        else:
+            base_name = base_pattern
+            extension = ''
+        
+        # 버전 없는 파일과 버전 있는 파일 모두 찾기
+        pattern = f"{base_name}*.csv" if extension else f"{base_name}*"
+        all_matches = list(root.rglob(pattern))
+        
+        if not all_matches:
+            raise FileNotFoundError(f"No files found matching pattern: {pattern}")
+        
+        # 버전 정보 추출 및 정렬
+        versioned_files = []
+        base_file = None
+        
+        # 버전 패턴: _v숫자 형태
+        version_pattern = re.compile(rf'{re.escape(base_name)}_v(\d+)\.csv$')
+        
+        for file_path in all_matches:
+            filename = file_path.name
+            
+            # 정확히 base_pattern과 일치하는 파일 (버전 없음)
+            if filename == base_pattern:
+                base_file = file_path
+                continue
+            
+            # 버전 번호 추출
+            match = version_pattern.search(filename)
+            if match:
+                version_num = int(match.group(1))
+                versioned_files.append((version_num, file_path))
+        
+        # 버전 있는 파일이 있으면 가장 높은 버전 선택
+        if versioned_files:
+            versioned_files.sort(key=lambda x: x[0], reverse=True)
+            latest = versioned_files[0][1]
+            print(f"📌 Loading latest version: {latest.name}")
+            return latest
+        
+        # 버전 없는 기본 파일이 있으면 그것 사용
+        if base_file:
+            print(f"📌 Loading base file: {base_file.name}")
+            return base_file
+        
+        # 아무것도 없으면 에러
+        raise FileNotFoundError(f"No valid files found for pattern: {base_pattern}")
 
-    # ✅ 현실 파일명 반영
+    # ✅ 리뷰 파일 (기존 로직 유지)
     reviews_fp = find_any(
         data_dir,
         [
@@ -62,8 +120,10 @@ def load_csvs(data_dir: Path) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
             "reviews_data.csv",
         ],
     )
-    factors_fp = find_file(data_dir, "reg_factor.csv")
-    questions_fp = find_file(data_dir, "reg_question.csv")
+    
+    # ✅ Factor와 Question은 버전 체크하여 최신 파일 로드
+    factors_fp = find_latest_versioned_file(data_dir, "reg_factor.csv")
+    questions_fp = find_latest_versioned_file(data_dir, "reg_question.csv")
 
     reviews = pd.read_csv(reviews_fp)     # dtype 고정하지 않음(유연)
     factors = pd.read_csv(factors_fp, dtype=str).fillna("")
