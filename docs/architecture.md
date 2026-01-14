@@ -1251,12 +1251,14 @@ def normalize(text, lang='ko'):
 
 ## 참고 문서
 
-- [README.md](README.md) - 프로젝트 개요
-- [MONITORING.md](MONITORING.md) - 모니터링 상세 가이드
-- [DEPLOYMENT_MONITORING.md](DEPLOYMENT_MONITORING.md) - 배포 전략
+- [README.md](../README.md) - 프로젝트 개요
+- [MONITORING_ARCHITECTURE.md](MONITORING_ARCHITECTURE.md) - 모니터링 아키텍처 및 배포 가이드
 - [LLM_SETUP.md](LLM_SETUP.md) - LLM 설정 가이드
 - [SMARTSTORE_REVIEW_COLLECTION.md](SMARTSTORE_REVIEW_COLLECTION.md) - 크롤링 가이드
 - [ARCHITECTURE_OLD.md](ARCHITECTURE_OLD.md) - 이전 아키텍처 문서 (참고용)
+- [DEV_ENV_SETUP.md](DEV_ENV_SETUP.md) - 개발 환경 설정
+- [CONTRIBUTING.md](CONTRIBUTING.md) - 기여 가이드
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) - 프로젝트 현황
 
 ---
 

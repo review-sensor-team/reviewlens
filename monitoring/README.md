@@ -79,4 +79,4 @@ rm -rf monitoring/data/*
 ./scripts/start_monitoring.sh
 ```
 
-자세한 내용은 [MONITORING.md](MONITORING.md) 참조
+자세한 내용은 [MONITORING_ARCHITECTURE.md](../docs/MONITORING_ARCHITECTURE.md) 참조

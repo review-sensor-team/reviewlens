@@ -230,7 +230,7 @@ docker-compose -f docker-compose.monitoring.yml up -d
 # - Metrics: http://localhost:8000/metrics
 ```
 
-> 📊 모니터링 상세 가이드: [MONITORING.md](MONITORING.md)
+> 📊 모니터링 상세 가이드: [MONITORING_ARCHITECTURE.md](docs/MONITORING_ARCHITECTURE.md)
 
 ---
 
