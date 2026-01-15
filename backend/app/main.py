@@ -1,15 +1,13 @@
 """FastAPI application factory and main entry point"""
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 import time
 
-from .api import routes_chat
+from .api import routes_chat, routes_metrics
 from .core.settings import settings
 from .core.metrics import (
     http_requests_total,
-    http_request_duration_seconds,
-    get_metrics
+    http_request_duration_seconds
 )
 
 
@@ -67,14 +65,9 @@ def create_app() -> FastAPI:
         
         return response
 
-    # Metrics endpoint
-    @app.get("/metrics")
-    async def metrics():
-        """Prometheus metrics endpoint"""
-        return get_metrics()
-
     # Register routers
     app.include_router(routes_chat.router, prefix="/api/chat", tags=["chat"])
+    app.include_router(routes_metrics.router, tags=["metrics"])
 
     return app
 

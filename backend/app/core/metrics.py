@@ -38,7 +38,7 @@ dialogue_turns_total = Counter(
 dialogue_completions_total = Counter(
     'dialogue_completions_total',
     'Total completed dialogues',
-    ['session_id']
+    ['category']
 )
 
 # ============================================================================

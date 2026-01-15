@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pathlib import Path
 #feature/api
 from typing import Dict, Any
+import time
 
 from backend.pipeline.dialogue import DialogueSession
 from ..schemas.requests import ChatRequest, SessionStartRequest
@@ -12,6 +13,13 @@ from ..services.session_store import SessionStore
 #feature/api
 from backend.app.core.settings import settings
 from backend.pipeline.llm_client import LLMClient
+from ..core.metrics import (
+    dialogue_sessions_total,
+    dialogue_turns_total,
+    dialogue_completions_total,
+    llm_calls_total,
+    llm_duration_seconds
+)
 
 router = APIRouter()
 session_store = SessionStore()
@@ -27,6 +35,9 @@ async def start_session(request: SessionStartRequest):
             category=request.category,
             data_dir=Path("backend/data")
         )
+
+        # 메트릭: 세션 시작 기록
+        dialogue_sessions_total.labels(category=request.category).inc()
 
         #feature/api LLMClient
         api_key = settings.get_api_key(request.provider)
@@ -67,25 +78,49 @@ async def send_message(request: ChatRequest):
             api_key=config["api_key"]
         )
 
-        answer = client.generate_text(request.message)
+        # LLM 호출 시간 측정
+        llm_start_time = time.time()
+        model_name = f"{config['provider']}/{config['model_name']}"
+        
+        try:
+            answer = client.generate_text(request.message)
+            llm_duration = time.time() - llm_start_time
+            
+            # 메트릭: LLM 호출 성공 기록
+            llm_calls_total.labels(model=model_name, status='success').inc()
+            llm_duration_seconds.labels(model=model_name).observe(llm_duration)
+        except Exception as llm_error:
+            llm_duration = time.time() - llm_start_time
+            
+            # 메트릭: LLM 호출 실패 기록
+            llm_calls_total.labels(model=model_name, status='error').inc()
+            llm_duration_seconds.labels(model=model_name).observe(llm_duration)
+            raise
 
-        return ChatResponse(
+        # 응답 생성
+        is_final = True  # 현재는 항상 True
+        response = ChatResponse(
             session_id=request.session_id,
             bot_message=answer,
-            is_final=True,
+            is_final=is_final,
             top_factors=[],
             llm_context={}
         )
 
+        # 메트릭: 대화 턴 기록
+        dialogue_turns_total.labels(
+            session_id=request.session_id,
+            is_final=str(is_final).lower()
+        ).inc()
+
+        # 메트릭: 세션 완료 기록 (is_final=True일 때)
+        if is_final:
+            dialogue_completions_total.labels(category=session.category).inc()
+
+        return response
+
         # feature/api 기존 코드 주석 처리
         # bot_turn = session.step(request.message)
-        
-        # return ChatResponse(
-        #     session_id=request.session_id,
-        #     bot_message=answer,
-        #     is_final=True,
-        #     top_factors=[],
-        #     llm_context={}
-        # )
+        # return ChatResponse(...)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
