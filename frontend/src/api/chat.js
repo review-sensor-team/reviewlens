@@ -27,11 +27,18 @@ export const startSession = async (productUrl) => {
 /**
  * 메시지 전송 (후회 포인트 선택 또는 추가 질문)
  */
-export const sendMessage = async (sessionId, message) => {
-  const response = await api.post(config.endpoints.sendMessage, {
+export const sendMessage = async (sessionId, message, selectedFactor = null) => {
+  const payload = {
     session_id: sessionId,
     message
-  })
+  }
+  
+  // 후회 포인트를 선택한 경우 selected_factor 추가
+  if (selectedFactor) {
+    payload.selected_factor = selectedFactor
+  }
+  
+  const response = await api.post(config.endpoints.sendMessage, payload)
 
   const data = response.data
 
@@ -55,4 +62,14 @@ export const sendMessage = async (sessionId, message) => {
     llm_context: data.llm_context || null,
     raw: data
   }
+}
+
+/**
+ * 세션 재분석 (대화만 초기화, 리뷰 데이터 유지)
+ */
+export const resetSession = async (sessionId) => {
+  const response = await api.post(config.endpoints.resetSession, {
+    session_id: sessionId
+  })
+  return response.data
 }

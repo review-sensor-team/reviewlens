@@ -22,6 +22,9 @@ from ..core.metrics import (
     evidence_count,
     Timer,
 )
+from ..app.core.settings import Settings
+
+settings = Settings()
 
 logger = logging.getLogger("pipeline.dialogue")
 
@@ -109,10 +112,15 @@ class DialogueSession:
 
     # ----------------------------- public -----------------------------
 
-    def step(self, user_message: str) -> BotTurn:
-        """사용자 메시지 처리 및 다음 질문 생성"""
+    def step(self, user_message: str, selected_factor: Optional[str] = None) -> BotTurn:
+        """사용자 메시지 처리 및 다음 질문 생성
+        
+        Args:
+            user_message: 사용자 메시지
+            selected_factor: 선택된 후회 포인트 (display_name 또는 factor_key)
+        """
         self.turn_count += 1
-        logger.info(f"[턴 {self.turn_count}] 사용자 메시지: {user_message[:50]}...")
+        logger.info(f"[턴 {self.turn_count}] 사용자 메시지: {user_message[:50]}..., selected_factor={selected_factor}")
         
         # 메트릭: 대화 턴 카운트
         dialogue_turns_total.labels(category=self.category).inc()
@@ -146,7 +154,8 @@ class DialogueSession:
         # 3) 수렴(안정성) 체크: top3 Jaccard
         cur_top3 = [k for k, _ in top_factors]
         sim = _jaccard(cur_top3, self.prev_top3) if self.prev_top3 else 0.0
-        if sim >= 0.67:  # 3개 중 2개 이상 같으면 안정
+        from backend.app.core.settings import settings
+        if sim >= settings.DIALOGUE_JACCARD_THRESHOLD:  # 3개 중 2개 이상 같으면 안정
             self.stability_hits += 1
         else:
             self.stability_hits = 1
@@ -154,15 +163,21 @@ class DialogueSession:
         logger.debug(f"  - 안정성: sim={sim:.2f}, hits={self.stability_hits}")
 
         # 4) 분석 준비 여부 체크
-        # - 최소 3턴 이상이면 분석 결과 제공 (안정성 조건 제거)
+        # - 최소 턴 이상이면 분석 결과 제공 (안정성 조건 제거)
         # - 분석 제공 후에도 대화는 계속 가능
-        should_provide_analysis = (self.turn_count >= 3)
+        should_provide_analysis = (self.turn_count >= settings.DIALOGUE_MIN_ANALYSIS_TURNS)
         logger.info(f"  - 분석 체크: should_provide_analysis={should_provide_analysis} (turn={self.turn_count}, stability={self.stability_hits})")
 
-        # 5) 다음 질문 1개 생성 (분석 제공 여부와 무관하게 항상 생성)
-        question_text, question_id, answer_type, choices = self._pick_next_question(top_factors)
-        logger.info(f"  - 다음 질문: {question_id or 'N/A'} ({answer_type or 'no_choice'})")
-        logger.debug(f"    질문 텍스트: {question_text[:50]}...")
+        # 5) 다음 질문 생성
+        # - selected_factor가 있으면 해당 factor의 여러 질문을 choices로 반환
+        # - 없으면 일반 질문 1개 생성
+        if selected_factor:
+            question_text, question_id, answer_type, choices = self._pick_multiple_questions(selected_factor, top_factors)
+            logger.info(f"  - 선택된 factor '{selected_factor}'의 질문 {len(choices or [])}개 생성")
+        else:
+            question_text, question_id, answer_type, choices = self._pick_next_question(top_factors)
+            logger.info(f"  - 다음 질문: {question_id or 'N/A'} ({answer_type or 'no_choice'})")
+            logger.debug(f"    질문 텍스트: {question_text[:50]}...")
 
         # 히스토리: assistant
         self.dialogue_history.append({"role": "assistant", "message": question_text})
@@ -219,9 +234,9 @@ class DialogueSession:
             return self._fallback_question()
 
         # "집중 수렴" 전략:
-        # - turn 1~2: top2까지 후보
-        # - turn 3부터: top1에 더 집중
-        focus = 2 if self.turn_count <= 2 else 1
+        # - turn 1~threshold: top2까지 후보
+        # - turn threshold+1부터: top1에 더 집중
+        focus = 2 if self.turn_count <= settings.DIALOGUE_FOCUS_TURNS_THRESHOLD else 1
         focus_factors = [k for k, _ in top_factors[:focus]]
         logger.debug(f"  - focus_factors: {focus_factors} (turn={self.turn_count})")
 
@@ -277,6 +292,65 @@ class DialogueSession:
         logger.debug(f"  - 후보 질문 없음, fallback 사용 (asked_questions={len(self.asked_questions)}개)")
         return self._fallback_question()
 
+    def _pick_multiple_questions(self, selected_factor: str, top_factors: List[Tuple[str, float]]) -> Tuple[str, Optional[str], str, Optional[List[str]]]:
+        """선택된 factor에 대한 첫 번째 질문을 반환 (choices 포함)
+        
+        Args:
+            selected_factor: 선택된 factor (display_name 또는 factor_key)
+            top_factors: 상위 factors 리스트
+        
+        Returns:
+            (question_text, question_id, answer_type, choices)
+        """
+        logger.debug(f"  - selected_factor '{selected_factor}'의 질문들 검색 중...")
+        
+        # selected_factor에 해당하는 Factor 객체 찾기
+        factor_obj = None
+        
+        # 1) factor_key로 찾기
+        factor_obj = self.factors_map.get(selected_factor)
+        
+        # 2) display_name으로 찾기
+        if not factor_obj:
+            for f in self.factors:
+                if getattr(f, 'display_name', None) == selected_factor:
+                    factor_obj = f
+                    break
+        
+        # 3) top_factors에서 찾기 (partial match)
+        if not factor_obj:
+            for factor_key, _ in top_factors:
+                if factor_key == selected_factor or selected_factor in factor_key:
+                    factor_obj = self.factors_map.get(factor_key)
+                    break
+        
+        if not factor_obj:
+            logger.warning(f"  - factor '{selected_factor}' not found, fallback 사용")
+            return self._fallback_question()
+        
+        logger.debug(f"    - factor 찾음: {factor_obj.factor_key} (id={factor_obj.factor_id})")
+        
+        # 해당 factor의 첫 번째 질문 찾기
+        for question in self.questions:
+            # factor_id로 매칭
+            if question.factor_id == factor_obj.factor_id:
+                # 이미 물어본 질문 제외
+                if question.question_text not in self.asked_questions:
+                    self.asked_questions.add(question.question_text)
+                    
+                    # choices 파싱
+                    choices = None
+                    if question.choices and question.answer_type in ["single_choice", "multiple_choice"]:
+                        choices = [c.strip() for c in question.choices.split("|") if c.strip()]
+                    
+                    logger.info(f"  - factor '{factor_obj.factor_key}'의 첫 질문: q_id={question.question_id}, answer_type={question.answer_type}, choices={len(choices) if choices else 0}개")
+                    
+                    # 질문 + choices 반환
+                    return question.question_text, str(question.question_id), question.answer_type or 'no_choice', choices
+        
+        logger.warning(f"  - factor '{factor_obj.factor_key}'의 질문이 없음, fallback 사용")
+        return self._fallback_question()
+    
     def _fallback_question(self) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
         """기본 질문 반환
         
@@ -309,17 +383,18 @@ class DialogueSession:
                 self.scored_df, self.factor_counts = compute_review_factor_scores(self.reviews_df, self.factors)
 
         # 2) evidence 추출
+        from backend.app.core.settings import settings as app_settings
         with Timer(retrieval_duration_seconds, {'category': self.category}):
             evidence = retrieve_evidence_reviews(
                 self.scored_df,
                 self.factors_map,
                 [(k, s) for k, s in top_factors],
-                per_factor_limit=(8, 8),
-                max_total_evidence=15,
+                per_factor_limit=(app_settings.EVIDENCE_PER_FACTOR_MIN, app_settings.EVIDENCE_PER_FACTOR_MAX),
+                max_total_evidence=app_settings.EVIDENCE_MAX_TOTAL,
                 quota_by_rank={
-                    0: {"NEG": 3, "MIX": 2, "POS": 1},
-                    1: {"NEG": 2, "MIX": 2, "POS": 1},
-                    2: {"NEG": 2, "MIX": 2, "POS": 1},
+                    0: {"NEG": app_settings.EVIDENCE_RANK0_NEG, "MIX": app_settings.EVIDENCE_RANK0_MIX, "POS": app_settings.EVIDENCE_RANK0_POS},
+                    1: {"NEG": app_settings.EVIDENCE_RANK1_NEG, "MIX": app_settings.EVIDENCE_RANK1_MIX, "POS": app_settings.EVIDENCE_RANK1_POS},
+                    2: {"NEG": app_settings.EVIDENCE_RANK2_NEG, "MIX": app_settings.EVIDENCE_RANK2_MIX, "POS": app_settings.EVIDENCE_RANK2_POS},
                 },
             )
         

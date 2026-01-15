@@ -1,19 +1,24 @@
 <template>
   <div class="chat-page">
-    <!-- Header -->
-    <header class="header">
-      <img src="/images/ic_main.png" alt="ReviewLens Logo" class="logo" />
-      <h3>안녕하세요!</h3>
-      <p>
-        후회 없는 구매를 위한 리뷰 분석 서비스<br />
-        <strong>ReviewLens</strong> 입니다.
-      </p>
+    <!-- Top Header (Fixed) -->
+    <header class="top-header">
+      <h1>후회 포인트 분석<br/></h1>
+      <p>부정 리뷰 기반 구매가이드</p>
     </header>
 
     <!-- Chat body -->
     <section class="chat-body" ref="scrollRef">
-      <!-- Welcome -->
-      <div class="message bot">
+      <!-- Greeting (Scrollable) -->
+      <div class="greeting">
+        <img src="/images/ic_main.png" alt="ReviewLens Logo" class="logo" />
+        <h3>안녕하세요!<br />
+          후회 없는 구매를 위한 리뷰 분석 서비스<br />
+          <p>ReviewLens</p> 입니다.
+        </h3>
+      </div>
+
+      <!-- Welcome (메시지가 없을 때만 표시) -->
+      <div v-if="messages.length === 0" class="message bot">
         <div class="bubble-wrapper">
           <div class="bubble">
             <p class="hint">
@@ -87,6 +92,7 @@
             <img :src="getLoadingIcon()" alt="아이콘" class="loading-icon" />
             <span>{{ loadingText }}</span>
           </div>
+          <div class="timestamp">{{ loadingElapsedSeconds }}초 경과</div>
         </div>
       </div>
     </section>
@@ -94,10 +100,10 @@
     <!-- Action Buttons (세션이 있을 때만 표시) -->
     <div v-if="sessionId" class="action-buttons">
       <button @click="clearConversation" class="action-btn clear-btn" :disabled="loading">
-        <span><img src="/images/ic_trash.png" alt="삭제" class="action-icon" /> 대화 내용 삭제</span>
+        <span><img src="/images/ic_rotate-cw.png" alt="삭제" class="action-icon" /> 링크 재분석</span>
       </button>
       <button @click="startNewAnalysis" class="action-btn new-btn" :disabled="loading">
-        <span><img src="/images/ic_file-text.png" alt="분석" class="action-icon" /> 다른 상품 분석</span>
+        <span><img src="/images/ic_trash.png" alt="분석" class="action-icon" /> 분석 초기화</span>
       </button>
     </div>
 
@@ -123,7 +129,7 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { startSession, sendMessage } from '../api/chat.js'
+import { startSession, sendMessage, resetSession } from '../api/chat.js'
 import { marked } from 'marked'
 
 // Marked 옵션 설정
@@ -138,6 +144,9 @@ const loading = ref(false)
 const loadingText = ref('')
 const loadingType = ref('search') // 'search', 'analyze', 'error', 'alert'
 const scrollRef = ref(null)
+const loadingStartTime = ref(null)
+const loadingElapsedSeconds = ref(0)
+let loadingInterval = null
 
 const sessionId = ref(null)
 
@@ -165,6 +174,30 @@ const getMessageIcon = (type) => {
 const scrollBottom = async () => {
   await nextTick()
   scrollRef.value.scrollTop = scrollRef.value.scrollHeight
+}
+
+const startLoadingTimer = () => {
+  loadingStartTime.value = Date.now()
+  loadingElapsedSeconds.value = 0
+  
+  if (loadingInterval) {
+    clearInterval(loadingInterval)
+  }
+  
+  loadingInterval = setInterval(() => {
+    if (loadingStartTime.value) {
+      loadingElapsedSeconds.value = Math.floor((Date.now() - loadingStartTime.value) / 1000)
+    }
+  }, 1000)
+}
+
+const stopLoadingTimer = () => {
+  if (loadingInterval) {
+    clearInterval(loadingInterval)
+    loadingInterval = null
+  }
+  loadingStartTime.value = null
+  loadingElapsedSeconds.value = 0
 }
 
 const formatTimestamp = () => {
@@ -227,6 +260,7 @@ const send = async () => {
   // 1. URL 입력 → 후회 포인트 도출
   if (!sessionId.value) {
     loading.value = true
+    startLoadingTimer()
     loadingType.value = 'search'
     loadingText.value = '상품 리뷰를 수집 중이에요...'
     
@@ -248,7 +282,9 @@ const send = async () => {
 아래 키워드를 선택하면 해당 리뷰 키워드와 관련된 리뷰를 보여드릴께요.<br />
 혹은 궁금하신 점을 질문해 주시면 관련해서 자세히 설명 드릴께요.`,
         null,
-        res.suggested_factors
+        res.suggested_factors,
+        null,
+        'analyze'  // messageType을 'analyze'로 설정
       )
     } catch (e) {
       const error_prefix = '리뷰 수집 중';
@@ -283,12 +319,14 @@ const send = async () => {
       return
     } finally {
       loading.value = false
+      stopLoadingTimer()
     }
     return
   }
 
   // 5. 추가 질문 입력
   loading.value = true
+  startLoadingTimer()
   loadingType.value = 'brief'
   loadingText.value = '답변을 생성 중이에요...'
   
@@ -304,9 +342,10 @@ const send = async () => {
     }
   } catch (e) {
 
-    pushBot('<div class="message-with-icon"><img src="/images/error_icon.png" alt="아이콘" class="message-icon" /><p>죄송해요, 응답을 생성하는 중 오류가 발생했어요. 다시 시도해 주세요.</p></div>')
+    pushBot('<div class="message-with-icon"><img src="/images/error_icon.png" alt="아이콘" class="message-icon" /><div>죄송해요, 응답을 생성하는 중 오류가 발생했어요. 다시 시도해 주세요.</div></div>')
   } finally {
     loading.value = false
+    stopLoadingTimer()
   }
 }
 
@@ -318,11 +357,13 @@ const selectRegretPoint = async (point) => {
   console.log('현재 세션 ID:', sessionId.value)
   
   loading.value = true
+  startLoadingTimer()
   loadingType.value = 'search'
   loadingText.value = '관련 리뷰를 찾고 있어요...'
   
   try {
-    const res = await sendMessage(sessionId.value, point)
+    // 후회 포인트를 selected_factor로 전달
+    const res = await sendMessage(sessionId.value, point, point)
     
     console.log('sendMessage 응답:', res)
     
@@ -332,22 +373,23 @@ const selectRegretPoint = async (point) => {
     if (hasReviews) {
       // related_reviews 객체를 배열로 변환하고 summary 생성
       const reviewsArray = []
-      const termCounts = []
+      const termCounts = new Map()  // term별 중복 제거를 위해 Map 사용
       
       for (const factorKey in res.related_reviews) {
         const reviewInfo = res.related_reviews[factorKey]
         
         if (reviewInfo.examples && reviewInfo.examples.length > 0) {
-          // 각 example의 matched_terms와 sentences를 수집
-          const uniqueTerms = new Set()
-          
-          reviewInfo.examples.forEach(example => {
-            // matched_terms 수집
-            if (example.matched_terms) {
-              example.matched_terms.forEach(term => uniqueTerms.add(term))
+          // term_counts 사용 (각 anchor_term별 리뷰 수)
+          if (reviewInfo.term_counts) {
+            for (const [term, count] of Object.entries(reviewInfo.term_counts)) {
+              if (!termCounts.has(term)) {
+                termCounts.set(term, count)
+              }
             }
-            
-            // sentences를 문자열로 변환하여 배열에 추가
+          }
+          
+          // sentences를 문자열로 변환하여 배열에 추가
+          reviewInfo.examples.forEach(example => {
             const text = Array.isArray(example.sentences) 
               ? example.sentences.join(' ') 
               : example.sentences
@@ -357,20 +399,12 @@ const selectRegretPoint = async (point) => {
               rating: example.rating
             })
           })
-          
-          // term별 건수 추가
-          if (uniqueTerms.size > 0) {
-            const termsArray = Array.from(uniqueTerms)
-            termsArray.forEach(term => {
-              termCounts.push(`'${term}'에 대해 ${reviewInfo.count}건`)
-            })
-          }
         }
       }
       
-      // summary 문구 생성
-      const reviewSummary = termCounts.length > 0 
-        ? termCounts.join(', ') + '을 찾았어요.'
+      // summary 문구 생성 (중복 제거된 term들로)
+      const reviewSummary = termCounts.size > 0 
+        ? Array.from(termCounts.entries()).map(([term, count]) => `'${term}'에 대해 ${count}건`).join(', ') + '을 찾았어요.'
         : null
       
       console.log('변환된 리뷰 배열:', reviewsArray)
@@ -390,9 +424,10 @@ const selectRegretPoint = async (point) => {
   } catch (e) {
     console.error('리뷰 분석 오류:', e)
     console.error('오류 상세:', e.response?.data)
-    pushBot('<div class="message-with-icon"><img src="/images/error_icon.png" alt="아이콘" class="message-icon" /><p>죄송해요, 리뷰 분석 중 오류가 발생했어요.</p>')
+    pushBot('<div class="message-with-icon"><img src="/images/ic_x-circle.png" alt="아이콘" class="message-icon" /><p>죄송해요, 리뷰 분석 중 오류가 발생했어요.</p>')
   } finally {
     loading.value = false
+    stopLoadingTimer()
   }
 }
 
@@ -400,6 +435,7 @@ const selectOption = async (opt) => {
   pushUser(opt)
   
   loading.value = true
+  startLoadingTimer()
   loadingType.value = 'search'
   loadingText.value = '답변을 생성 중이에요...'
   
@@ -422,34 +458,61 @@ const selectOption = async (opt) => {
     }
   } finally {
     loading.value = false
+    stopLoadingTimer()
   }
 }
 
 /** 모든 대화 내용 삭제 (분석 결과까지만 남김) */
-const clearConversation = () => {
+const clearConversation = async () => {
   if (!sessionId.value) return
   
-  // 분석 결과 메시지(messageType === 'analyze')의 인덱스를 찾음
-  let analyzeMessageIndex = -1
-  for (let i = messages.value.length - 1; i >= 0; i--) {
-    if (messages.value[i].messageType === 'analyze') {
-      analyzeMessageIndex = i
-      break
+  try {
+    // 백엔드에 세션 재분석 요청
+    await resetSession(sessionId.value)
+    
+    // 분석 결과 메시지(messageType === 'analyze')의 인덱스를 찾음
+    let analyzeMessageIndex = -1
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      if (messages.value[i].messageType === 'analyze') {
+        analyzeMessageIndex = i
+        break
+      }
     }
-  }
-  
-  if (analyzeMessageIndex !== -1) {
-    // 분석 결과까지만 남기고 나머지 삭제
-    messages.value = messages.value.slice(0, analyzeMessageIndex + 1)
-  } else {
-    // 분석 결과가 없으면 첫 번째 사용자 메시지(URL)까지만 남김
-    const urlInputIndex = messages.value.findIndex(msg => msg.role === 'user')
-    if (urlInputIndex !== -1) {
-      messages.value = messages.value.slice(0, urlInputIndex + 1)
+    
+    if (analyzeMessageIndex !== -1) {
+      // 분석 결과까지만 남기고 나머지 삭제
+      messages.value = messages.value.slice(0, analyzeMessageIndex + 1)
+    } else {
+      // 분석 결과가 없으면 첫 번째 사용자 메시지(URL)까지만 남김
+      const urlInputIndex = messages.value.findIndex(msg => msg.role === 'user')
+      if (urlInputIndex !== -1) {
+        messages.value = messages.value.slice(0, urlInputIndex + 1)
+      }
     }
+    
+    scrollBottom()
+  } catch (error) {
+    console.error('세션 재분석 실패:', error)
+    // 에러가 발생해도 UI는 초기화
+    let analyzeMessageIndex = -1
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      if (messages.value[i].messageType === 'analyze') {
+        analyzeMessageIndex = i
+        break
+      }
+    }
+    
+    if (analyzeMessageIndex !== -1) {
+      messages.value = messages.value.slice(0, analyzeMessageIndex + 1)
+    } else {
+      const urlInputIndex = messages.value.findIndex(msg => msg.role === 'user')
+      if (urlInputIndex !== -1) {
+        messages.value = messages.value.slice(0, urlInputIndex + 1)
+      }
+    }
+    
+    scrollBottom()
   }
-  
-  scrollBottom()
 }
 
 /** 다른 상품 리뷰 분석 (세션 완전 초기화) */
@@ -476,38 +539,64 @@ const startNewAnalysis = () => {
   flex-direction: column;
   background: #fff !important;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-  max-width: 100vw;
+  max-width: 480px;
+  margin: 0 auto;
   overflow: hidden;
+  box-shadow: 0 0 20px rgba(0,0,0,0.1);
 }
 
-.header {
-  padding: max(env(safe-area-inset-top), 20px) 20px 24px;
+/* Top Header (Fixed) */
+.top-header {
+  padding: max(env(safe-area-inset-top), 14px) 20px 14px;
+  text-align: left;
+  background: var(--Colors-White-100, #FFF);
+  /* box-shadow: 0 2px 8px rgba(0,0,0,0.1); */
+  position: relative;
+  color: var(--Colors-Black-100, #121212);
+  /* Global Tokens/Pretendard/subtitle */
+  font-family: Pretendard;
+  font-size: 0.9rem;/* 14px */
+  font-style: normal;
+  line-height: 150%; /* 1.5rem */
+  letter-spacing: -0.02rem;
+  z-index: 10;
+}
+
+.top-header h1 {
+  margin: 0;
+  color: var(--Colors-Black-100, #121212);
+  /* Global Tokens/Pretendard/subtitle */
+  font-family: Pretendard;
+  font-size: 1.15rem;/* 18px */
+  font-style: normal;
+  font-weight: 700;
+  line-height: 150%; /* 1.5rem */
+  letter-spacing: -0.02rem;
+}
+
+/* Greeting (Scrollable) */
+.greeting {
+  padding: 0px 20px 30px;
   text-align: center;
-  background: url('/images/bg_gra.png') center/cover;
-  /* box-shadow: 0 1px 0 rgba(0,0,0,0.05); */
+  background: url('/images/bg_gra.png') center top/100% 40% no-repeat;
+  margin: -16px -16px 16px -16px;
 }
 
 .logo {
-  height: 162px;
-  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));
+  height: 172px;
+  /* filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1)); */
 }
 
-.header {
-  margin-bottom: 1.5rem;
-}
-
-.header h3 {
-  margin: 0;
-  font-size: 20px;
+.greeting h3 {
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.3px;
+  line-height: 140%;
 }
 
-.header p {
-  margin: 8px 0 0;
-  font-size: 18px;
-  opacity: 0.9;
-  line-height: 140%;
+.greeting p {
+  font-weight: 700;
+  display: inline;
 }
 
 .chat-body {
@@ -565,15 +654,6 @@ const startNewAnalysis = () => {
   background: var(--Colors-White-200, #F4F4F4);
   transition: all 0.2s;
   -webkit-tap-highlight-color: transparent;
-}
-
-.new-btn {
-  color: #007AFF;
-  border-color: #007AFF;
-}
-
-.new-btn:hover {
-  background: #E3F2FF;
 }
 
 .action-btn img {

@@ -8,6 +8,58 @@ from typing import List, Dict, Any
 logger = logging.getLogger("collector.factor_analyzer")
 
 
+def find_latest_versioned_file(root: Path, base_pattern: str) -> Path:
+    """
+    버전 번호가 포함된 파일 중 최신 버전을 찾음
+    예: reg_factor_v4.csv, reg_factor_v3.csv -> reg_factor_v4.csv 선택
+    """
+    # 패턴에서 확장자 분리
+    if base_pattern.endswith('.csv'):
+        base_name = base_pattern[:-4]  # .csv 제거
+        extension = '.csv'
+    else:
+        base_name = base_pattern
+        extension = ''
+    
+    # 버전 없는 파일과 버전 있는 파일 모두 찾기
+    pattern = f"{base_name}*.csv" if extension else f"{base_name}*"
+    all_matches = list(root.rglob(pattern))
+    
+    if not all_matches:
+        raise FileNotFoundError(f"No files found matching pattern: {pattern}")
+    
+    # 버전 정보 추출 및 정렬
+    versioned_files = []
+    base_file = None
+    
+    # 버전 패턴: _v숫자 형태
+    version_pattern = re.compile(r'_v(\d+)(?:\.\w+)?$')
+    
+    for file_path in all_matches:
+        stem = file_path.stem  # 확장자 제외한 파일명
+        match = version_pattern.search(stem)
+        
+        if match:
+            version = int(match.group(1))
+            versioned_files.append((version, file_path))
+        elif stem == base_name:
+            base_file = file_path
+    
+    # 버전 파일이 있으면 최신 버전 반환
+    if versioned_files:
+        versioned_files.sort(key=lambda x: x[0], reverse=True)
+        latest = versioned_files[0][1]
+        logger.info(f"최신 버전 파일 선택: {latest.name} (v{versioned_files[0][0]})")
+        return latest
+    
+    # 버전 파일이 없으면 기본 파일 반환
+    if base_file:
+        logger.info(f"기본 파일 사용: {base_file.name}")
+        return base_file
+    
+    raise FileNotFoundError(f"No suitable file found for pattern: {base_pattern}")
+
+
 class FactorAnalyzer:
     """리뷰에서 factor별 anchor_terms를 포함한 문장 추출"""
     
@@ -18,8 +70,10 @@ class FactorAnalyzer:
         logger.debug(f"  - 로드된 factors: {len(self.factors)}개")
     
     def _load_factors(self, data_dir: Path) -> List[Dict[str, Any]]:
-        """reg_factor.csv에서 해당 카테고리의 factor 로드"""
-        factor_file = data_dir / "factor" / "reg_factor.csv"
+        """reg_factor.csv에서 해당 카테고리의 factor 로드 (최신 버전 자동 선택)"""
+        factor_dir = data_dir / "factor"
+        factor_file = find_latest_versioned_file(factor_dir, "reg_factor.csv")
+        logger.info(f"  - factor 파일: {factor_file.name}")
         factors = []
         
         with open(factor_file, 'r', encoding='utf-8-sig') as f:  # BOM 제거를 위해 utf-8-sig 사용

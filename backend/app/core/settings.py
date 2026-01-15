@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     
     APP_NAME: str = "ReviewLens"
     DEBUG: bool = True
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
     
 
     #Feature/api LLM Configurations
@@ -30,6 +30,33 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.6
     LLM_TOP_P: float = 0.9
     LLM_MAX_TOKENS: int = 4096
+    
+    # Dialogue 설정
+    DIALOGUE_JACCARD_THRESHOLD: float = 0.67  # top3 유사도 임계값 (3개 중 2개 이상 같으면 안정)
+    DIALOGUE_MIN_ANALYSIS_TURNS: int = 3      # 최소 분석 턴 수
+    DIALOGUE_FOCUS_TURNS_THRESHOLD: int = 2   # 턴 1-2는 top2, 턴 3+는 top1 집중
+    DIALOGUE_TOP_FACTORS_LIMIT: int = 3       # 상위 요인 제한
+    
+    # Evidence 검색 설정
+    EVIDENCE_PER_FACTOR_MIN: int = 8          # factor당 최소 evidence 수
+    EVIDENCE_PER_FACTOR_MAX: int = 8          # factor당 최대 evidence 수
+    EVIDENCE_MAX_TOTAL: int = 15              # 전체 최대 evidence 수
+    EVIDENCE_RANK0_NEG: int = 3               # rank 0의 NEG quota
+    EVIDENCE_RANK0_MIX: int = 2               # rank 0의 MIX quota
+    EVIDENCE_RANK0_POS: int = 1               # rank 0의 POS quota
+    EVIDENCE_RANK1_NEG: int = 2               # rank 1의 NEG quota
+    EVIDENCE_RANK1_MIX: int = 2               # rank 1의 MIX quota
+    EVIDENCE_RANK1_POS: int = 1               # rank 1의 POS quota
+    EVIDENCE_RANK2_NEG: int = 2               # rank 2의 NEG quota
+    EVIDENCE_RANK2_MIX: int = 2               # rank 2의 MIX quota
+    EVIDENCE_RANK2_POS: int = 1               # rank 2의 POS quota
+    
+    # API 설정
+    API_RELATED_REVIEWS_LIMIT: int = 5        # 관련 리뷰 제한
+    API_MIN_FINALIZE_TURNS: int = 3           # 최소 종료 턴 수
+    API_MIN_STABILITY_HITS: int = 2           # 최소 안정성 히트
+    API_MAX_CACHE_SIZE: int = 10              # 최대 캐시 크기
+    API_CATEGORY_PREVIEW_REVIEWS: int = 20    # 카테고리 감지용 미리보기 리뷰 수
 
     #Supported LLM Models
     SUPPORTED_PROVIDERS: List[str] = ['google', 'openai']

@@ -11,31 +11,71 @@ from backend.app.core.settings import settings
 
 logger = logging.getLogger("api.chat")
 
-# 상수
-TOP_FACTORS_LIMIT = 3
-RELATED_REVIEWS_LIMIT = 5
-MIN_FINALIZE_TURNS = 3
-MIN_STABILITY_HITS = 2
+# 상수 (settings에서 가져옴)
+TOP_FACTORS_LIMIT = settings.DIALOGUE_TOP_FACTORS_LIMIT
+RELATED_REVIEWS_LIMIT = settings.API_RELATED_REVIEWS_LIMIT
+MIN_FINALIZE_TURNS = settings.API_MIN_FINALIZE_TURNS
+MIN_STABILITY_HITS = settings.API_MIN_STABILITY_HITS
+
+# 카테고리 캐시 (앱 시작 시 한 번만 로드)
+_CATEGORIES_CACHE = None
+_CATEGORY_KEYWORDS_CACHE = None
+
+
+def _load_categories_from_csv() -> Tuple[List[Dict[str, str]], Dict[str, List[str]]]:
+    """CSV에서 카테고리와 키워드 정보 로드"""
+    import csv
+    
+    # 최신 버전 factor 파일 찾기
+    from backend.app.collector.factor_analyzer import find_latest_versioned_file
+    factor_dir = Path("backend/data/factor")
+    factor_file = find_latest_versioned_file(factor_dir, "reg_factor.csv")
+    
+    categories_map = {}  # category -> category_name
+    keywords_map = {}    # category -> [keywords]
+    
+    with open(factor_file, 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if not row or not row.get('category'):
+                continue
+            
+            category = row.get('category', '').strip()
+            category_name = row.get('category_name', '').strip()
+            product_name = row.get('product_name', '').strip()
+            
+            if category and category_name:
+                categories_map[category] = category_name
+                
+                # 키워드 수집 (category_name, product_name)
+                if category not in keywords_map:
+                    keywords_map[category] = set()
+                keywords_map[category].add(category_name.lower())
+                if product_name:
+                    keywords_map[category].add(product_name.lower())
+    
+    # 리스트로 변환
+    categories = [{'key': k, 'name': v} for k, v in categories_map.items()]
+    keywords = {k: list(v) for k, v in keywords_map.items()}
+    
+    logger.info(f"[카테고리 로드] {len(categories)}개 카테고리, {sum(len(v) for v in keywords.values())}개 키워드")
+    return categories, keywords
 
 
 def get_available_categories() -> List[Dict[str, str]]:
-    """사용 가능한 카테고리 목록 반환"""
-    return [
-        {'key': 'appliance_induction', 'name': '인덕션'},
-        {'key': 'electronics_coffee_machine', 'name': '커피머신'},
-        {'key': 'electronics_earphone', 'name': '이어폰/에어팟'},
-        {'key': 'furniture_chair', 'name': '의자'},
-        {'key': 'furniture_desk', 'name': '책상/데스크'},
-        {'key': 'furniture_mattress', 'name': '매트리스'},
-        {'key': 'furniture_bookshelf', 'name': '책장'},
-        {'key': 'appliance_heated_humidifier', 'name': '가습기'},
-        {'key': 'appliance_bedding_cleaner', 'name': '침구청소기'},
-        {'key': 'robot_cleaner', 'name': '로봇청소기'},
-    ]
+    """사용 가능한 카테고리 목록 반환 (CSV에서 동적 로드)"""
+    global _CATEGORIES_CACHE
+    if _CATEGORIES_CACHE is None:
+        _CATEGORIES_CACHE, _ = _load_categories_from_csv()
+    return _CATEGORIES_CACHE
 
 
 def detect_category(url: str, page_title: Optional[str] = None, reviews: Optional[List[Dict]] = None) -> Tuple[Optional[str], str]:
-    """URL, 페이지 제목, 리뷰 내용에서 카테고리 자동 감지"""
+    """URL, 페이지 제목, 리뷰 내용에서 카테고리 자동 감지 (CSV 기반)"""
+    global _CATEGORY_KEYWORDS_CACHE
+    if _CATEGORY_KEYWORDS_CACHE is None:
+        _, _CATEGORY_KEYWORDS_CACHE = _load_categories_from_csv()
+    
     search_text = url.lower()
     if page_title:
         search_text += " " + page_title.lower()
@@ -46,37 +86,32 @@ def detect_category(url: str, page_title: Optional[str] = None, reviews: Optiona
     
     logger.debug(f"[카테고리 감지] search_text_length={len(search_text)}, has_reviews={bool(reviews)}")
     
-    strong_keywords = {
-        'appliance_induction': ['인덕션', 'induction', '하이라이트'],
-        'electronics_coffee_machine': ['커피머신', 'coffee-machine', 'espresso', '에스프레소'],
-        'electronics_earphone': ['에어팟', 'airpod'],
-        'furniture_chair': ['의자', 'chair', '체어'],
-        'furniture_desk': ['책상', 'desk'],
-        'furniture_mattress': ['매트리스', 'mattress'],
-        'furniture_bookshelf': ['책장', 'bookshelf'],
-        'appliance_heated_humidifier': ['가습기', 'humidifier'],
-        'appliance_bedding_cleaner': ['침구청소기', 'bedding-cleaner'],
-        'robot_cleaner': ['로봇청소기', 'robot-cleaner', '로보락'],
-    }
-    
-    weak_keywords = {
-        'electronics_coffee_machine': ['커피'],
-        'electronics_earphone': ['이어폰', 'earphone'],
-        'furniture_mattress': ['침대'],
-    }
-    
-    for category, keywords in strong_keywords.items():
+    # CSV에서 로드한 키워드로 매칭
+    for category, keywords in _CATEGORY_KEYWORDS_CACHE.items():
         if any(keyword in search_text for keyword in keywords):
-            logger.info(f"[카테고리 감지 성공] '{category}' 감지됨 (high confidence)")
+            logger.info(f"[카테고리 감지 성공] '{category}' 감지됨 (키워드: {keywords})")
             return category, 'high'
-    
-    for category, keywords in weak_keywords.items():
-        if any(keyword in search_text for keyword in keywords):
-            logger.info(f"[카테고리 감지] '{category}' 추정됨 (low confidence)")
-            return category, 'low'
     
     logger.warning(f"[카테고리 감지 실패] URL/제목/리뷰에서 카테고리를 찾을 수 없음")
     return None, 'failed'
+
+
+def find_factor_key_by_display_name(session_store: SessionStore, session_id: str, display_name: str) -> Optional[str]:
+    """display_name으로 factor_key 찾기"""
+    reviews = session_store.get_reviews(session_id)
+    if not reviews:
+        return None
+    
+    # 모든 리뷰의 factor_matches를 검사하여 display_name과 일치하는 factor_key 찾기
+    for review in reviews:
+        for match in review.get('factor_matches', []):
+            if match.get('display_name') == display_name:
+                factor_key = match.get('factor_key')
+                logger.info(f"[display_name 매칭] '{display_name}' -> '{factor_key}'")
+                return factor_key
+    
+    logger.warning(f"[display_name 매칭 실패] '{display_name}'에 해당하는 factor_key를 찾을 수 없음")
+    return None
 
 
 def get_related_reviews(session_store: SessionStore, session_id: str, top_factors: List[Tuple[str, float]]) -> Dict[str, Dict]:
@@ -90,10 +125,21 @@ def get_related_reviews(session_store: SessionStore, session_id: str, top_factor
     logger.info(f"[관련 리뷰 조회] top_factors={[f[0] for f in top_factors[:TOP_FACTORS_LIMIT]]}")
     
     for factor_key, score in top_factors[:TOP_FACTORS_LIMIT]:
+        # factor_key가 실제 key인지 display_name인지 확인
+        actual_factor_key = factor_key
+        
+        # display_name일 수 있으므로 변환 시도
+        if '/' in factor_key or ' ' in factor_key or any(ord(c) > 127 for c in factor_key):
+            # 한글이 포함되어 있거나 슬래시가 있으면 display_name일 가능성이 높음
+            converted_key = find_factor_key_by_display_name(session_store, session_id, factor_key)
+            if converted_key:
+                actual_factor_key = converted_key
+                logger.info(f"  - factor_key 변환: '{factor_key}' -> '{actual_factor_key}'")
+        
         review_info = session_store.get_reviews_by_factor(
             session_id, 
-            factor_key, 
-            limit=RELATED_REVIEWS_LIMIT
+            actual_factor_key, 
+            limit=RELATED_REVIEWS_LIMIT  # 설정값 사용 (5건)
         )
         logger.info(f"  - {factor_key}: review_info={review_info}")
         
@@ -139,7 +185,10 @@ def format_choices(choices) -> Optional[str]:
 def check_cache(review_cache: Dict, session_store: SessionStore, session_configs: Dict, 
                 cache_key: str, product_url: str) -> Optional[CollectReviewsResponse]:
     """캐시 확인 및 반환"""
+    logger.debug(f"[캐시 확인] cache_key={cache_key}, 캐시 크기={len(review_cache)}")
+    
     if cache_key not in review_cache:
+        logger.info(f"[캐시 미스] url={product_url}")
         return None
     
     cached = review_cache[cache_key]
@@ -147,6 +196,16 @@ def check_cache(review_cache: Dict, session_store: SessionStore, session_configs
     
     if cached_session_id and session_store.get_session(cached_session_id):
         logger.info(f"[캐시 히트 + 세션 유효] url={product_url}, session_id={cached_session_id}")
+        # LLM config도 session_configs에 복원
+        if cached_session_id not in session_configs:
+            provider = settings.LLM_PROVIDER
+            session_configs[cached_session_id] = {
+                "provider": provider,
+                "model_name": settings.get_model_name(provider),
+                "api_key": settings.get_api_key(provider)
+            }
+            logger.debug(f"[캐시] LLM 설정 복원: {cached_session_id}")
+        
         return CollectReviewsResponse(
             success=True,
             session_id=cached_session_id,
@@ -167,22 +226,29 @@ def check_cache(review_cache: Dict, session_store: SessionStore, session_configs
         for r in cached['reviews']
     ]
     
-    new_session_id = session_store.create_session(
-        category=cached['category'],
-        data_dir=Path("backend/data"),
-        reviews=reviews_dict,
-        product_name=cached['product_name']
-    )
-    
-    cached['session_id'] = new_session_id
-    logger.info(f"[새 세션 생성] session_id={new_session_id}")
-    
+    # LLM 설정 준비
     provider = settings.LLM_PROVIDER
-    session_configs[new_session_id] = {
+    llm_config = {
         "provider": provider,
         "model_name": settings.get_model_name(provider),
         "api_key": settings.get_api_key(provider)
     }
+    
+    new_session_id = session_store.create_session(
+        category=cached['category'],
+        data_dir=Path("backend/data"),
+        reviews=reviews_dict,
+        product_name=cached['product_name'],
+        product_url=product_url,
+        llm_config=llm_config
+    )
+    
+    cached['session_id'] = new_session_id
+    logger.info(f"[캐시 복원] 새 세션 생성 완료: {new_session_id}")
+    
+    # LLM 설정 저장
+    session_configs[new_session_id] = llm_config
+    logger.debug(f"[캐시 복원] LLM 설정 저장: {new_session_id}")
     
     return CollectReviewsResponse(
         success=True,

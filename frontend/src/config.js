@@ -6,6 +6,7 @@ export default {
   endpoints: {
     startSession: '/api/chat/start',
     sendMessage: '/api/chat/message',
-    collectReviews: '/api/chat/collect-reviews'
+    collectReviews: '/api/chat/collect-reviews',
+    resetSession: '/api/chat/reset-session'
   }
 }

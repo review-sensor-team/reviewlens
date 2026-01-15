@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from backend.app.core.settings import settings
 from ..collector import SmartStoreCollector
-from ..schemas.requests import ChatRequest, SessionStartRequest, CollectReviewsRequest
+from ..schemas.requests import ChatRequest, SessionStartRequest, CollectReviewsRequest, ResetSessionRequest
 from ..schemas.responses import ChatResponse, SessionStartResponse, CollectReviewsResponse, Review, FactorMatch
 from ..session.session_store import SessionStore
 from .routes_chat_helpers import (
@@ -88,13 +88,23 @@ async def send_message(request: ChatRequest):
             logger.info(f"[사용자 요청 종료] session_id={request.session_id}")
             bot_turn = session.finalize_now()
         else:
-            bot_turn = session.step(request.message)
+            # selected_factor가 있으면 전달
+            bot_turn = session.step(request.message, selected_factor=request.selected_factor)
         
         logger.info(f"[대화 진행] session_id={request.session_id}, is_final={bot_turn.is_final}, top_factors={len(bot_turn.top_factors)}")
         logger.info(f"[top_factors 상세] {bot_turn.top_factors[:5]}")
         
         # 관련 리뷰 조회
-        related_reviews = get_related_reviews(session_store, request.session_id, bot_turn.top_factors)
+        # selected_factor가 있으면 해당 factor를 우선적으로 조회
+        factors_to_query = bot_turn.top_factors
+        if request.selected_factor:
+            logger.info(f"[선택된 factor] {request.selected_factor}")
+            # selected_factor를 리스트 맨 앞에 추가 (중복 제거)
+            factors_to_query = [(request.selected_factor, 1.0)] + [
+                (k, s) for k, s in bot_turn.top_factors if k != request.selected_factor
+            ]
+        
+        related_reviews = get_related_reviews(session_store, request.session_id, factors_to_query)
         
         # 봇 메시지 구성
         bot_message = format_bot_message(bot_turn, related_reviews)
@@ -149,7 +159,7 @@ async def collect_reviews(request: CollectReviewsRequest):
         
         # 카테고리 결정을 위한 사전 수집 (메타데이터만)
         reviews_preview, page_title = collector.collect_reviews(
-            max_reviews=min(20, request.max_reviews),
+            max_reviews=min(settings.API_CATEGORY_PREVIEW_REVIEWS, request.max_reviews),
             sort_by_low_rating=request.sort_by_low_rating
         )
         
@@ -199,22 +209,27 @@ async def collect_reviews(request: CollectReviewsRequest):
         # 후회 팩터 집계 (상위 5개)
         suggested_factors = aggregate_factors(review_responses)
         
-        # 세션 생성
-        session_id = session_store.create_session(
-            category=category,
-            data_dir=Path("backend/data"),
-            reviews=result['reviews'],
-            product_name=product_name
-        )
-        logger.info(f"[세션 생성] session_id={session_id}, category={category}, reviews={result['total_count']}건")
-        
-        # LLM 설정 저장 (.env의 LLM_PROVIDER 사용)
+        # LLM 설정 준비
         provider = settings.LLM_PROVIDER
-        session_configs[session_id] = {
+        llm_config = {
             "provider": provider,
             "model_name": settings.get_model_name(provider),
             "api_key": settings.get_api_key(provider)
         }
+        
+        # 세션 생성 (LLM 설정 포함)
+        session_id = session_store.create_session(
+            category=category,
+            data_dir=Path("backend/data"),
+            reviews=result['reviews'],
+            product_name=product_name,
+            product_url=request.product_url,
+            llm_config=llm_config
+        )
+        logger.info(f"[세션 생성] session_id={session_id}, category={category}, reviews={result['total_count']}건")
+        
+        # LLM 설정 저장 (메모리)
+        session_configs[session_id] = llm_config
         logger.info(f"[LLM 설정 저장] session_id={session_id}, provider={provider}")
         
         # 응답 생성
@@ -241,4 +256,28 @@ async def collect_reviews(request: CollectReviewsRequest):
         logger.error(f"[리뷰 수집 실패] url={request.product_url}, error={str(e)}", exc_info=True)
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reset-session")
+async def reset_session(request: ResetSessionRequest):
+    """세션 재분석 (대화만 초기화, 리뷰 데이터는 유지)"""
+    logger.info(f"[세션 재분석] session_id={request.session_id}")
+    
+    try:
+        # 세션이 존재하는지 확인
+        session = session_store.get_session(request.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 대화 데이터만 초기화 (리뷰, suggested_factors, product_name은 유지)
+        session_store.reset_dialogue(request.session_id)
+        
+        logger.info(f"[세션 재분석 완료] session_id={request.session_id}")
+        return {"success": True, "message": "대화가 초기화되었습니다"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[세션 재분석 실패] session_id={request.session_id}, error={str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -82,6 +82,67 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    # Startup event - 세션 복원
+    @app.on_event("startup")
+    async def startup_event():
+        """애플리케이션 시작 시 실행"""
+        logger.info("[Startup] 세션 복원 시작...")
+        try:
+            # SessionStore의 세션 복원 실행
+            from .api.routes_chat import session_store, session_configs, review_cache
+            if session_store.enable_persistence:
+                session_store._restore_sessions()
+                
+                # session_configs 및 review_cache 복원 (LLM 설정 및 캐시)
+                cache_restored = 0
+                for session_id, metadata in session_store._metadata.items():
+                    # LLM 설정 복원
+                    llm_config = metadata.get("llm_config")
+                    if llm_config:
+                        session_configs[session_id] = llm_config
+                        logger.debug(f"[Startup] LLM 설정 복원: {session_id}")
+                    
+                    # review_cache 복원
+                    product_url = metadata.get("product_url")
+                    if product_url and session_id in session_store._reviews:
+                        # 캐시 키 재구성 (기본값: max_reviews=100, sort_by_low_rating=True)
+                        cache_key = f"{product_url}|100|True"
+                        
+                        # 리뷰 데이터를 Review 객체로 변환
+                        from .schemas.responses import Review
+                        reviews = session_store._reviews[session_id]
+                        review_responses = [
+                            Review(
+                                review_id=r.get('review_id', idx),
+                                text=r.get('text', ''),
+                                rating=r.get('rating', 0),
+                                created_at=r.get('created_at', ''),
+                                factor_matches=r.get('factor_matches', [])
+                            ) for idx, r in enumerate(reviews)
+                        ]
+                        
+                        # suggested_factors 복원 (최소 5개)
+                        from .api.routes_chat_helpers import aggregate_factors
+                        suggested_factors = aggregate_factors(review_responses)
+                        
+                        # 캐시 저장
+                        review_cache[cache_key] = {
+                            'session_id': session_id,
+                            'reviews': review_responses,
+                            'total_count': len(review_responses),
+                            'product_name': metadata.get('product_name'),
+                            'category': metadata.get('category'),
+                            'confidence': 'high',  # 복원된 세션은 high로 간주
+                            'suggested_factors': suggested_factors,
+                            'timestamp': __import__('datetime').datetime.now()
+                        }
+                        cache_restored += 1
+                        logger.debug(f"[Startup] 캐시 복원: {product_url} -> {session_id}")
+                
+                logger.info(f"[Startup] 세션 복원 완료: {len(session_store._sessions)}개 세션, {cache_restored}개 캐시")
+        except Exception as e:
+            logger.error(f"[Startup] 세션 복원 중 오류: {str(e)}", exc_info=True)
+
     # Metrics middleware (첫 번째로 등록하여 모든 요청 추적)
     app.add_middleware(MetricsMiddleware)
     

@@ -6,18 +6,191 @@ import logging
 import pandas as pd
 
 from backend.dialogue.dialogue import DialogueSession
+from backend.session.session_persistence import SessionPersistence
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("backend.app.session.session_store")
 
 
 class SessionStore:
-    """세션 저장소 (메모리 기반)"""
+    """세션 저장소 (메모리 + JSON 파일 영속화)"""
     
-    def __init__(self):
+    def __init__(self, enable_persistence: bool = True, auto_restore: bool = False):
         self._sessions: Dict[str, DialogueSession] = {}
         self._reviews: Dict[str, List[Dict[str, Any]]] = {}  # session_id -> reviews
+        self._metadata: Dict[str, Dict[str, Any]] = {}  # session_id -> metadata (product_url, product_name)
+        
+        # 영속화 기능
+        self.enable_persistence = enable_persistence
+        self.persistence = SessionPersistence() if enable_persistence else None
+        
+        # 서버 시작 시 기존 세션 복원 (startup 이벤트에서 수동으로 호출)
+        if self.enable_persistence and auto_restore:
+            self._restore_sessions()
     
-    def create_session(self, category: str, data_dir: Path, reviews: Optional[List[Dict[str, Any]]] = None, product_name: Optional[str] = None) -> str:
+    @staticmethod
+    def _convert_term_for_display(term: str) -> str:
+        """검색용 키워드를 사용자 친화적으로 변환
+        
+        예: '아프' -> '아픔', '무거운' -> '무거움', '길어' -> '김', '느려' -> '느림'
+        """
+        # 1음절 또는 너무 짧은 경우 그대로 반환
+        if len(term) <= 1:
+            return term
+        
+        # 어간 형태를 명사형으로 변환
+        # 1. ㅡ 불규칙: "아프" -> "아픔"
+        if term.endswith('프'):
+            return term[:-1] + '픔'
+        
+        # 2. ㅡ 불규칙: "슬프" -> "슬픔"
+        elif term.endswith(('운', '른')):
+            # "무거운" -> "무거움", "느른" -> "느름"
+            return term[:-1] + '움'
+        
+        # 3. 어/여 어미: "길어", "더워", "무거워" -> 명사형
+        elif term.endswith('워'):
+            # "무거워" -> "무거움"
+            return term[:-1] + '움'
+        elif term.endswith('어') and len(term) >= 3:
+            # "길어" -> "김", "적어" -> "적음", "느려" -> "느림"
+            # 마지막 모음이 '어'인 경우
+            base = term[:-1]
+            # 받침이 있는지 확인 (한글 유니코드 처리)
+            if base:
+                last_char = base[-1]
+                if '가' <= last_char <= '힣':
+                    # 한글인 경우: 받침 체크
+                    code = ord(last_char) - 0xAC00
+                    jongseong = code % 28
+                    if jongseong > 0:
+                        # 받침 있음: "적" + "어" -> "적음"
+                        return base + '음'
+                    else:
+                        # 받침 없음: "길" + "어" -> "김"
+                        return base + '음'
+            return term[:-1] + '음'
+        
+        # 4. 거 어미: "뜨거", "무거" -> 명사형
+        elif term.endswith('거') and len(term) >= 3:
+            # "무거" -> "무거움", "뜨거" -> "뜨거움"
+            return term + '움'
+        
+        # 5. 려/려 어미: "걸려", "눌려" -> 명사형
+        elif term.endswith('려') and len(term) >= 3:
+            # "걸려" -> "걸림"
+            return term[:-1] + '림'
+        
+        # 6. 다 종결어미는 그대로
+        elif term.endswith('다'):
+            return term
+        
+        # 기본적으로 그대로 반환
+        return term
+    
+    def _restore_sessions(self):
+        """저장된 세션 복원"""
+        try:
+            if not self.persistence:
+                logger.warning("[세션 복원] Persistence가 비활성화됨")
+                return
+            
+            session_ids = self.persistence.list_sessions()
+            logger.info(f"[세션 복원] {len(session_ids)}개 세션 발견")
+            
+            if len(session_ids) == 0:
+                logger.info("[세션 복원] 복원할 세션 없음")
+                return
+            
+            restored_count = 0
+            for session_id in session_ids:
+                try:
+                    if self._restore_single_session(session_id):
+                        restored_count += 1
+                except Exception as e:
+                    logger.error(f"[세션 복원 실패] {session_id}: {str(e)}", exc_info=True)
+            
+            logger.info(f"[세션 복원 완료] {restored_count}/{len(session_ids)}개 복원 성공")
+        except Exception as e:
+            logger.error(f"[세션 복원 전체 실패] {str(e)}", exc_info=True)
+    
+    def _restore_single_session(self, session_id: str) -> bool:
+        """단일 세션 복원"""
+        try:
+            data = self.persistence.load_session(session_id)
+            if not data:
+                return False
+            
+            # DialogueSession 재생성
+            reviews_df = data.get("reviews_df", pd.DataFrame())
+            category = data.get("category", "unknown")
+            product_name = data.get("product_name")
+            
+            # 세션 재생성
+            session = DialogueSession(
+                category=category,
+                data_dir=Path("backend/data"),
+                reviews_df=reviews_df,
+                product_name=product_name
+            )
+            
+            # Dialogue 상태 복원
+            dialogue_state = data.get("dialogue_state", {})
+            if dialogue_state:
+                session.turn_count = dialogue_state.get("turn_count", 0)
+                session.stability_hits = dialogue_state.get("stability_hits", 0)
+                session.cumulative_scores = dialogue_state.get("cumulative_scores", {})
+                session.prev_top3 = dialogue_state.get("prev_top3", [])
+                session.dialogue_history = dialogue_state.get("dialogue_history", [])
+            
+            # 메모리에 저장
+            self._sessions[session_id] = session
+            
+            # 리뷰 데이터 복원
+            if not reviews_df.empty:
+                self._reviews[session_id] = reviews_df.to_dict(orient="records")
+            
+            # 메타데이터 저장 (LLM 설정 포함)
+            self._metadata[session_id] = {
+                "product_url": data.get("product_url"),
+                "product_name": data.get("product_name"),
+                "category": category,
+                "llm_config": data.get("llm_config")
+            }
+            
+            logger.info(f"[세션 복원 성공] {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"[세션 복원 실패] {session_id}: {str(e)}", exc_info=True)
+            return False
+    
+    def _save_session(self, session_id: str):
+        """세션 데이터를 JSON 파일로 저장"""
+        if not self.enable_persistence:
+            return
+        
+        try:
+            session = self._sessions.get(session_id)
+            if not session:
+                return
+            
+            metadata = self._metadata.get(session_id, {})
+            reviews_df = pd.DataFrame(self._reviews.get(session_id, []))
+            
+            session_data = {
+                "dialogue": session,
+                "product_url": metadata.get("product_url"),
+                "product_name": metadata.get("product_name"),
+                "category": metadata.get("category"),
+                "llm_config": metadata.get("llm_config"),
+                "reviews_df": reviews_df
+            }
+            
+            self.persistence.save_session(session_id, session_data)
+        except Exception as e:
+            logger.error(f"[세션 저장 실패] {session_id}: {str(e)}", exc_info=True)
+    
+    def create_session(self, category: str, data_dir: Path, reviews: Optional[List[Dict[str, Any]]] = None, product_name: Optional[str] = None, product_url: Optional[str] = None, llm_config: Optional[Dict[str, Any]] = None) -> str:
         """새 세션 생성"""
         session_id = str(uuid.uuid4())
         
@@ -30,6 +203,18 @@ class SessionStore:
         
         session = DialogueSession(category=category, data_dir=data_dir, reviews_df=reviews_df, product_name=product_name)
         self._sessions[session_id] = session
+        
+        # 메타데이터 저장 (LLM 설정 포함)
+        self._metadata[session_id] = {
+            "product_url": product_url,
+            "product_name": product_name,
+            "category": category,
+            "llm_config": llm_config
+        }
+        
+        # 파일로 저장
+        self._save_session(session_id)
+        
         return session_id
     
     def get_session(self, session_id: str) -> Optional[DialogueSession]:
@@ -43,9 +228,47 @@ class SessionStore:
         if session_id in self._reviews:
             del self._reviews[session_id]
     
+    def reset_dialogue(self, session_id: str):
+        """대화만 초기화 (리뷰 데이터는 유지)"""
+        session = self._sessions.get(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+        
+        # 기존 데이터 백업
+        reviews_df = session.reviews_df
+        product_name = session.product_name
+        category = session.category
+        data_dir = Path("backend/data")  # DialogueSession의 기본 data_dir
+        
+        # 메타데이터 백업
+        metadata = self._metadata.get(session_id, {})
+        reviews = self._reviews.get(session_id, [])
+        
+        # 새 DialogueSession 생성 (대화 히스토리 초기화)
+        new_session = DialogueSession(
+            category=category,
+            data_dir=data_dir,
+            reviews_df=reviews_df,
+            product_name=product_name
+        )
+        
+        # 세션 교체
+        self._sessions[session_id] = new_session
+        
+        # 리뷰와 메타데이터는 유지
+        self._reviews[session_id] = reviews
+        self._metadata[session_id] = metadata
+        
+        # 파일로 저장
+        self._save_session(session_id)
+        
+        logger.info(f"[SessionStore] 세션 재분석 완료: {session_id}")
+    
     def store_reviews(self, session_id: str, reviews: List[Dict[str, Any]]):
         """세션에 분석된 리뷰 저장"""
         self._reviews[session_id] = reviews
+        # 파일로 저장
+        self._save_session(session_id)
     
     def get_reviews(self, session_id: str) -> Optional[List[Dict[str, Any]]]:
         """세션의 리뷰 조회"""
@@ -156,9 +379,19 @@ class SessionStore:
         # weight와 rating으로 우선순위 정렬 (낮은 평점 우선, 높은 weight 우선)
         related.sort(key=lambda x: (x.get('rating', 5), -x.get('weight', 1.0)))
         
+        # 각 anchor_term별 리뷰 수 계산 (표시명 변환 적용)
+        term_counts = {}
+        for item in related:
+            for term in item.get('matched_terms', []):
+                display_term = self._convert_term_for_display(term)
+                term_counts[display_term] = term_counts.get(display_term, 0) + 1
+        
+        logger.info(f"[term별 카운트] {term_counts}")
+        
         return {
             'factor_key': factor_key,
             'display_name': display_name or factor_key,
             'count': len(related),
+            'term_counts': term_counts,  # 각 term별 리뷰 수
             'examples': related[:limit]
         }
