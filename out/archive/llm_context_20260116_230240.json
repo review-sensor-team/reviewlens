@@ -1,0 +1,102 @@
+{
+  "top_factors": [
+    [
+      "anc_noise",
+      2.8
+    ],
+    [
+      "anc_pressure",
+      1.9500000000000002
+    ]
+  ],
+  "evidence_reviews": [
+    {
+      "review_id": "980562801960",
+      "rating": 1,
+      "excerpt": "한달 좀 넘게 썼는데 노래 재생할 때 끊김현상, 통화할 때 한쪽 유닛에서 상대방 목소리는 안들리고 불쾌하고 이상한 총소리남",
+      "reason": [
+        "anc_noise+anchor",
+        "anc_noise+context"
+      ],
+      "factor": "anc_noise",
+      "score": 6.552,
+      "label": "NEG"
+    },
+    {
+      "review_id": "52175008774",
+      "rating": 1,
+      "excerpt": "가만히 정지 상태에서는 이상이 없지만 걷거나 뛰거나 하면 이어팁에서 불규칙하게 딸깍, 틱틱 하는 등의 소음이 나서 불편합니다. 에어팟 프로2에서는 없던 증상인데 3에서는 다른 잉부 사용자들이 이런 틱틱하는 소음 문제가 있더군요.",
+      "reason": [
+        "anc_noise+anchor",
+        "anc_noise+context"
+      ],
+      "factor": "anc_noise",
+      "score": 6.552,
+      "label": "NEG"
+    },
+    {
+      "review_id": "208029039613",
+      "rating": 1,
+      "excerpt": "걸을때 틱틱 탁탁 딱딱 소리 남 불량보내준듯 ;; 정품도 아닌것같음",
+      "reason": [
+        "anc_noise+anchor",
+        "anc_noise+context"
+      ],
+      "factor": "anc_noise",
+      "score": 6.552,
+      "label": "NEG"
+    },
+    {
+      "review_id": "916941405620",
+      "rating": 2,
+      "excerpt": "노이즈캔슬링이랑 소리는 좋습니다 제 귀에는 살짝 안맞아서 귀바퀴가 아프네요 ㅠ",
+      "reason": [
+        "anc_noise+anchor",
+        "anc_noise+context"
+      ],
+      "factor": "anc_noise",
+      "score": 5.824,
+      "label": "POS"
+    },
+    {
+      "review_id": "646526713960",
+      "rating": 1,
+      "excerpt": "올해의 후회템 1위 노캔이 좋은건 분명한데 착용감이 너무 안좋음 팁을 바꾼다고 해도 헤드부분이 귀를 너무 누름",
+      "reason": [
+        "anc_noise+anchor"
+      ],
+      "factor": "anc_noise",
+      "score": 5.04,
+      "label": "MIX"
+    },
+    {
+      "review_id": "841285816560",
+      "rating": 1,
+      "excerpt": "불량이 걸렸는지 자꾸 치지직 소리가 나네요 ㅠㅠ",
+      "reason": [
+        "anc_noise+anchor",
+        "anc_noise+context"
+      ],
+      "factor": "anc_noise",
+      "score": 6.552,
+      "label": "NEU"
+    },
+    {
+      "review_id": "477990190890",
+      "rating": 2,
+      "excerpt": "그리고 노이즈캔슬링모드 사용하니까 전 울렁거릴정도여서 적응 안되면 노캔기능 끄고 사용해야할 것 같아요ㅠㅠㅠ🥹...",
+      "reason": [
+        "anc_pressure+anchor",
+        "anc_pressure+context",
+        "anc_pressure+negation"
+      ],
+      "factor": "anc_pressure",
+      "score": 3.1200000000000006,
+      "label": "MIX"
+    }
+  ],
+  "total_turns": 3,
+  "category_name": "earbuds",
+  "product_name": "애플 에어팟 프로 3",
+  "timestamp": "2026-01-16T23:02:40.424329"
+}

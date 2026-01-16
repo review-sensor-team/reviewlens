@@ -5,8 +5,8 @@ import uuid
 import logging
 import pandas as pd
 
-from backend.dialogue.dialogue import DialogueSession
-from backend.session.session_persistence import SessionPersistence
+from backend.app.domain.dialogue.session import DialogueSession
+from backend.app.infra.persistence.session_repo import SessionPersistence
 
 logger = logging.getLogger("backend.app.session.session_store")
 
@@ -149,12 +149,11 @@ class SessionStore:
             if not reviews_df.empty:
                 self._reviews[session_id] = reviews_df.to_dict(orient="records")
             
-            # 메타데이터 저장 (LLM 설정 포함)
+            # 메타데이터 저장
             self._metadata[session_id] = {
                 "product_url": data.get("product_url"),
                 "product_name": data.get("product_name"),
-                "category": category,
-                "llm_config": data.get("llm_config")
+                "category": category
             }
             
             logger.info(f"[세션 복원 성공] {session_id}")
@@ -182,7 +181,6 @@ class SessionStore:
                 "product_url": metadata.get("product_url"),
                 "product_name": metadata.get("product_name"),
                 "category": metadata.get("category"),
-                "llm_config": metadata.get("llm_config"),
                 "reviews_df": reviews_df
             }
             
@@ -190,7 +188,7 @@ class SessionStore:
         except Exception as e:
             logger.error(f"[세션 저장 실패] {session_id}: {str(e)}", exc_info=True)
     
-    def create_session(self, category: str, data_dir: Path, reviews: Optional[List[Dict[str, Any]]] = None, product_name: Optional[str] = None, product_url: Optional[str] = None, llm_config: Optional[Dict[str, Any]] = None) -> str:
+    def create_session(self, category: str, data_dir: Path, reviews: Optional[List[Dict[str, Any]]] = None, product_name: Optional[str] = None, product_url: Optional[str] = None) -> str:
         """새 세션 생성"""
         session_id = str(uuid.uuid4())
         
@@ -204,12 +202,11 @@ class SessionStore:
         session = DialogueSession(category=category, data_dir=data_dir, reviews_df=reviews_df, product_name=product_name)
         self._sessions[session_id] = session
         
-        # 메타데이터 저장 (LLM 설정 포함)
+        # 메타데이터 저장
         self._metadata[session_id] = {
             "product_url": product_url,
             "product_name": product_name,
-            "category": category,
-            "llm_config": llm_config
+            "category": category
         }
         
         # 파일로 저장

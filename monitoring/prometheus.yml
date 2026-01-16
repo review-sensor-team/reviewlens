@@ -28,7 +28,7 @@ scrape_configs:
     scrape_interval: 10s  # 백엔드는 더 자주 수집
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['localhost:8000']  # 로컬 바이너리 실행
+      - targets: ['host.docker.internal:8000']  # Docker에서 호스트 머신 접근
         labels:
           service: 'reviewlens-api'
           env: 'dev'

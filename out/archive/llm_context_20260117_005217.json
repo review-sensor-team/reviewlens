@@ -1,0 +1,86 @@
+{
+  "top_factors": [
+    [
+      "machine_defect",
+      1.9500000000000002
+    ],
+    [
+      "noise_loud",
+      1.32
+    ]
+  ],
+  "evidence_reviews": [
+    {
+      "review_id": "722342345448",
+      "rating": 1,
+      "excerpt": "기계가 되었다 안 되었다 하고. 제가 산 기계는 됐다 안 됐다 하고 이틀째 사용 중인데 소음 들으면 고장난 것 같아요.",
+      "reason": [
+        "machine_defect+anchor",
+        "machine_defect+context"
+      ],
+      "factor": "machine_defect",
+      "score": 3.5100000000000002,
+      "label": "MIX"
+    },
+    {
+      "review_id": "647753843438",
+      "rating": 1,
+      "excerpt": "고장 안나길...",
+      "reason": [
+        "machine_defect+anchor"
+      ],
+      "factor": "machine_defect",
+      "score": 2.7,
+      "label": "NEG"
+    },
+    {
+      "review_id": "875323447452",
+      "rating": 1,
+      "excerpt": "추츌할때 어쩔때 끼익하고 이상한 소리가나요!",
+      "reason": [
+        "noise_loud+anchor"
+      ],
+      "factor": "noise_loud",
+      "score": 3.9600000000000004,
+      "label": "NEG"
+    },
+    {
+      "review_id": "255476166048",
+      "rating": 1,
+      "excerpt": "소음이 매우 심각합니다.",
+      "reason": [
+        "noise_loud+anchor"
+      ],
+      "factor": "noise_loud",
+      "score": 3.9600000000000004,
+      "label": "NEG"
+    },
+    {
+      "review_id": "129015392837",
+      "rating": 1,
+      "excerpt": "어이가 없어서 전원이 안들어오는데 도어 열림 불량이 무슨 소리냐고 했더니 그제야 바로 교환 접수 도와준다고 대답하네요. AS 센터에서 검증하는 것은 이해합니다만 영상으로도 작동되지 않는 것을 확인했으면서 바로 새 제품을 보내는 것도 아니고 검증 이후에 보내준다면 거의 열흘 가량을 허비하",
+      "reason": [
+        "noise_loud+anchor",
+        "noise_loud+context"
+      ],
+      "factor": "noise_loud",
+      "score": 5.148000000000001,
+      "label": "NEU"
+    },
+    {
+      "review_id": "86437563864",
+      "rating": 1,
+      "excerpt": "드르륵 소리나는 초기불량에대한 대처와 같은말만되풀이하는 상담사,새상품하자문의인데도 쓰던상품과같은 as방법도 스트레스였고 공식스토어라고해서 구매했는데 정작 하자문의는 공식홈페이지로하라고하고 공홈은 스토어 톡톡으로해봤냐고 서로떠넘기기식으로 초반에 전화만5~6통했던점 불편했어요 앞으로는 그냥",
+      "reason": [
+        "noise_loud+anchor"
+      ],
+      "factor": "noise_loud",
+      "score": 3.9600000000000004,
+      "label": "NEU"
+    }
+  ],
+  "total_turns": 3,
+  "category_name": "coffee_machine",
+  "product_name": "네스프레소 버츄오플러스",
+  "timestamp": "2026-01-17T00:52:17.808209"
+}

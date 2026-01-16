@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     API_MIN_STABILITY_HITS: int = 2           # 최소 안정성 히트
     API_MAX_CACHE_SIZE: int = 10              # 최대 캐시 크기
     API_CATEGORY_PREVIEW_REVIEWS: int = 20    # 카테고리 감지용 미리보기 리뷰 수
+    
+    # 리뷰 소스 설정
+    REVIEW_SOURCE_MODE: str = "json_file"     # "json_file" 또는 "url"
+    REVIEW_FILE_FORMAT: str = "json"          # "json" 또는 "csv" - 리뷰 파일 형식
+    REVIEW_JSON_DIR: str = "backend/data/review"  # JSON 파일 디렉토리
+    FACTOR_CSV_PATH: str = "backend/data/factor/reg_factor_v4.csv"  # Factor CSV 파일 경로
+    
+    # UI 설정
+    USE_PRODUCT_SELECTION: bool = True        # True: 상품 선택 모드, False: URL 입력 모드
 
     #Supported LLM Models
     SUPPORTED_PROVIDERS: List[str] = ['google', 'openai']

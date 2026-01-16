@@ -17,13 +17,42 @@
         </h3>
       </div>
 
-      <!-- Welcome (메시지가 없을 때만 표시) -->
-      <div v-if="messages.length === 0" class="message bot">
+      <!-- Welcome (항상 표시) -->
+      <div class="message bot welcome">
         <div class="bubble-wrapper">
           <div class="bubble">
             <p class="hint">
-              제가 분석할 상품 URL을 입력해주세요.<br />
+              {{ welcomeMessage }}<br />
               <small>부정적인 리뷰만 분석합니다</small>
+            </p>
+            <!-- 초기 선택 옵션 (URL 모드일 때만 표시) -->
+            <div v-if="!useProductSelection && !analysisMode" class="option-list">
+              <button @click="showProductSelection">
+                📋 상품 목록에서 선택하기
+              </button>
+              <button @click="showUrlInput">
+                🔗 URL 직접 입력하기
+              </button>
+            </div>
+            <!-- 상품 선택 버튼 -->
+            <div v-if="(useProductSelection || analysisMode === 'product') && availableProducts.length > 0" class="option-list">
+              <button
+                v-for="product in availableProducts"
+                :key="product.product_id || product"
+                @click="selectProduct(typeof product === 'string' ? product : product.product_name)"
+              >
+                <div v-if="typeof product === 'object'" style="text-align: left;">
+                  <div style="font-weight: 600;">{{ product.product_name }}</div>
+                  <!-- <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">
+                    {{ product.category }} · 리뷰 {{ product.review_count }}건
+                  </div> -->
+                </div>
+                <span v-else>{{ product }}</span>
+              </button>
+            </div>
+            <!-- URL 입력 안내 -->
+            <p v-if="analysisMode === 'url'" class="hint" style="margin-top: 12px;">
+              상품 URL을 입력창에 입력해주세요.
             </p>
           </div>
           <div class="timestamp">{{ formatTimestamp() }}</div>
@@ -35,7 +64,14 @@
         <div :class="['message', msg.role]">
           <div class="bubble-wrapper">
             <div class="bubble" :class="msg.messageType">
-              <!-- 리뷰 근거 출력 -->
+              <!-- 메시지 텍스트 먼저 표시 -->
+              <div v-if="msg.messageType" class="message-with-icon">
+                <img :src="getMessageIcon(msg.messageType)" alt="아이콘" class="message-icon" />
+                <div v-html="msg.text"></div>
+              </div>
+              <p v-else-if="msg.text" v-html="msg.text"></p>
+
+              <!-- 리뷰 근거 출력 (메시지 다음) -->
               <div v-if="msg.reviews" class="reviews-evidence">
                 <div class="evidence-title">
                   <span v-if="msg.reviewSummary">{{ msg.reviewSummary }}</span>
@@ -52,20 +88,14 @@
                 </div>
               </div>
 
-              <div v-if="msg.messageType" class="message-with-icon">
-                <img :src="getMessageIcon(msg.messageType)" alt="아이콘" class="message-icon" />
-                <div v-html="msg.text"></div>
-              </div>
-              <p v-else v-html="msg.text"></p>
-
               <!-- 후회 포인트 버튼 -->
               <div v-if="msg.regretPoints" class="option-list">
                 <button
-                  v-for="point in msg.regretPoints"
-                  :key="point"
-                  @click="selectRegretPoint(point)"
+                  v-for="factor in msg.regretPoints"
+                  :key="factor.factor_key || factor"
+                  @click="selectRegretPoint(typeof factor === 'object' ? factor.factor_key : factor)"
                 >
-                  {{ point }}
+                  {{ typeof factor === 'object' ? factor.display_name : factor }}
                 </button>
               </div>
 
@@ -100,7 +130,7 @@
     <!-- Action Buttons (세션이 있을 때만 표시) -->
     <div v-if="sessionId" class="action-buttons">
       <button @click="clearConversation" class="action-btn clear-btn" :disabled="loading">
-        <span><img src="/images/ic_rotate-cw.png" alt="삭제" class="action-icon" /> 링크 재분석</span>
+        <span><img src="/images/ic_rotate-cw.png" alt="재분석" class="action-icon" /> 상품 재분석</span>
       </button>
       <button @click="startNewAnalysis" class="action-btn new-btn" :disabled="loading">
         <span><img src="/images/ic_trash.png" alt="분석" class="action-icon" /> 분석 초기화</span>
@@ -128,8 +158,8 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
-import { startSession, sendMessage, resetSession } from '../api/chat.js'
+import { ref, nextTick, onMounted, computed } from 'vue'
+import { startSession, sendMessage, resetSession, getProducts, analyzeProduct, getAppConfig } from '../api/chat.js'
 import { marked } from 'marked'
 
 // Marked 옵션 설정
@@ -149,6 +179,69 @@ const loadingElapsedSeconds = ref(0)
 let loadingInterval = null
 
 const sessionId = ref(null)
+const availableProducts = ref([])
+const analysisMode = ref(null) // null, 'product', 'url'
+const useProductSelection = ref(false) // settings에서 가져올 값
+
+// 환영 메시지 (설정에 따라 변경)
+const welcomeMessage = computed(() => {
+  if (useProductSelection.value) {
+    return '아래의 상품 중 분석할 상품을 선택해 주세요.'
+  } else {
+    return '제가 분석할 상품을 선택하거나 URL을 입력해주세요.'
+  }
+})
+
+// 컴포넌트 마운트 시 설정 로드
+onMounted(async () => {
+  try {
+    // 앱 설정 로드
+    const config = await getAppConfig()
+    useProductSelection.value = config.use_product_selection
+    
+    // 상품 선택 모드면 자동으로 상품 목록 로드
+    if (useProductSelection.value) {
+      analysisMode.value = 'product'
+      loading.value = true
+      loadingType.value = 'search'
+      loadingText.value = '상품 목록을 불러오는 중이에요...'
+      try {
+        availableProducts.value = await getProducts()
+        console.log('상품 목록 로드:', availableProducts.value)
+      } catch (error) {
+        console.error('상품 목록 로드 실패:', error)
+      } finally {
+        loading.value = false
+      }
+    }
+  } catch (error) {
+    console.error('설정 로드 실패:', error)
+  }
+})
+
+// 상품 선택 모드 활성화
+const showProductSelection = async () => {
+  analysisMode.value = 'product'
+  if (availableProducts.value.length === 0) {
+    loading.value = true
+    loadingType.value = 'search'
+    loadingText.value = '상품 목록을 불러오는 중이에요...'
+    try {
+      availableProducts.value = await getProducts()
+      console.log('상품 목록 로드:', availableProducts.value)
+    } catch (error) {
+      console.error('상품 목록 로드 실패:', error)
+      pushBot('상품 목록을 불러오는데 실패했어요. 다시 시도해주세요.', null, null, null, 'error')
+    } finally {
+      loading.value = false
+    }
+  }
+}
+
+// URL 입력 모드 활성화
+const showUrlInput = () => {
+  analysisMode.value = 'url'
+}
 
 const getLoadingIcon = () => {
   const icons = {
@@ -216,7 +309,7 @@ const convertMarkdownToHtml = (markdown) => {
   return marked(markdown)
 }
 
-const pushBot = (text, options = null, regretPoints = null, reviews = null, messageType = null, reviewSummary = null) => {
+const pushBot = (text, options = null, regretPoints = null, reviews = null, messageType = null, reviewSummary = null, questionId = null, factorKey = null) => {
   messages.value.push({ 
     role: 'bot', 
     text, 
@@ -225,6 +318,8 @@ const pushBot = (text, options = null, regretPoints = null, reviews = null, mess
     reviews,
     messageType,
     reviewSummary,
+    questionId,
+    factorKey,
     timestamp: formatTimestamp()
   })
   scrollBottom()
@@ -239,6 +334,66 @@ const pushUser = (text) => {
   scrollBottom()
 }
 
+/** 상품 선택 시 리뷰 분석 시작 */
+const selectProduct = async (productName) => {
+  pushUser(productName)
+  
+  loading.value = true
+  startLoadingTimer()
+  loadingType.value = 'search'
+  loadingText.value = '상품 리뷰를 불러오는 중이에요...'
+  
+  try {
+    const res = await analyzeProduct(productName)
+    sessionId.value = res.session_id
+    
+    console.log('세션 생성 완료:', res.session_id)
+    console.log('suggested_factors:', res.suggested_factors)
+    
+    // 분석 상태 메시지
+    loadingType.value = 'analyze'
+    loadingText.value = '후회 포인트를 분석 중이에요...'
+    await new Promise(r => setTimeout(r, 800))
+    
+    // 후회 포인트 버튼 출력
+    const reviewCount = res.total_count || 0
+    pushBot(
+      `<span style="color: #017FFF; font-weight: 400;">${productName}</span>의<br />별점 낮은 순으로 ${reviewCount}건에서 후회 포인트를 분석해 보았어요.<br />
+아래 키워드를 선택하면 해당 리뷰 키워드와 관련된 리뷰를 보여드릴께요.<br />
+혹은 궁금하신 점을 질문해 주시면 관련해서 자세히 설명 드릴께요.`,
+      null,
+      res.suggested_factors,
+      null,
+      'analyze'
+    )
+  } catch (e) {
+    console.error('상품 분석 오류:', e)
+    
+    loadingType.value = 'error'
+    loadingText.value = '리뷰 분석에 실패했어요.'
+    await new Promise(r => setTimeout(r, 1000))
+    
+    pushBot(
+      '상품 분석 중 오류가 발생했어요.',
+      null,
+      null,
+      null,
+      'error'
+    )
+    pushBot(
+      '해당 상품의 리뷰 파일을 찾을 수 없거나<br />분석 중 문제가 발생했어요. 다른 상품을 선택해 주세요.',
+      null,
+      null,
+      null,
+      'alert'
+    )
+    sessionId.value = null
+  } finally {
+    loading.value = false
+    stopLoadingTimer()
+  }
+}
+
 /** 최초 URL 입력 또는 추가 질문 */
 const send = async () => {
   if (!input.value.trim()) return
@@ -250,111 +405,171 @@ const send = async () => {
   const isUrl = /^https?:\/\/.+/.test(text.trim()) || 
                 /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(text.trim())
   
-  // URL이면 기존 세션 초기화
-  if (isUrl && sessionId.value) {
-    sessionId.value = null
+  // URL 입력 모드에서 URL 입력
+  if (analysisMode.value === 'url' && isUrl && !sessionId.value) {
+    pushUser(text)
+    await handleUrlAnalysis(text)
+    return
   }
   
   pushUser(text)
 
-  // 1. URL 입력 → 후회 포인트 도출
+  // 세션이 없으면 무시 (상품 선택으로만 세션 생성)
   if (!sessionId.value) {
-    loading.value = true
-    startLoadingTimer()
-    loadingType.value = 'search'
-    loadingText.value = '상품 리뷰를 수집 중이에요...'
-    
-    try {
-      const res = await startSession(text)
-      sessionId.value = res.session_id      
-      console.log('세션 생성 완료:', res.session_id)
-      console.log('suggested_factors:', res.suggested_factors)
-      // 2. 시스템 상태 메시지 (분석 완료)
-      loadingType.value = 'analyze'
-      loadingText.value = '후회 포인트를 분석 중이에요...'
-      await new Promise(r => setTimeout(r, 800))
-
-      // 3. 후회 포인트 버튼 출력
-      const productName = res.product_name || '이 상품'
-      const reviewCount = res.total_count || 0
-      pushBot(
-        `<span style="color: #017FFF; font-weight: 400;">${productName}</span>의<br />별점 낮은 순으로 ${reviewCount}건에서 후회 포인트를 분석해 보았어요.<br />
-아래 키워드를 선택하면 해당 리뷰 키워드와 관련된 리뷰를 보여드릴께요.<br />
-혹은 궁금하신 점을 질문해 주시면 관련해서 자세히 설명 드릴께요.`,
-        null,
-        res.suggested_factors,
-        null,
-        'analyze'  // messageType을 'analyze'로 설정
-      )
-    } catch (e) {
-      const error_prefix = '리뷰 수집 중';
-      // 오류 처리
-      if(loadingType.value === 'search') {
-        loadingType.value = 'error'
-        loadingText.value = '리뷰 수집에 실패했어요.'
-      } else {
-        loadingType.value = 'error'
-        loadingText.value = '후회 포인트 분석에 실패했어요.'
-        error_prefix = '후회 포인트 분석 중';
-      }
-      await new Promise(r => setTimeout(r, 1000))
-      loading.value = false
-
-      pushBot(
-        `${error_prefix} 오류가 발생했어요.`,
-        null,
-        null,
-        null,
-        'error'
-      )
-      pushBot(
-        `<strong>ReviewLens</strong>에서 지원하지 않는 URL이거나<br />
-         리뷰 수집에 실패했어요. 다른 URL을 입력해 주세요.`,
-        null,
-        null,
-        null,
-        'alert'
-      )
-      sessionId.value = null
-      return
-    } finally {
-      loading.value = false
-      stopLoadingTimer()
-    }
+    pushBot('먼저 위에서 분석할 상품을 선택해 주세요.', null, null, null, 'alert')
     return
   }
 
-  // 5. 추가 질문 입력
+  // v2: 자유 텍스트도 answer-question API로 처리
   loading.value = true
   startLoadingTimer()
-  loadingType.value = 'brief'
-  loadingText.value = '답변을 생성 중이에요...'
+  loadingType.value = 'search'
+  loadingText.value = '답변을 처리 중이에요...'
   
   try {
-    const res = await sendMessage(sessionId.value, text)
-
-    if (res.is_final) {
-      // 최종 요약
-      pushBot(res.bot_message)
+    // 마지막 메시지에서 question_id와 factor_key 찾기
+    const lastMessage = messages.value[messages.value.length - 2] // user 메시지 전
+    const questionId = lastMessage?.questionId
+    const factorKey = lastMessage?.factorKey
+    
+    // answer-question API 호출
+    const response = await fetch(
+      `http://localhost:8000/api/v2/reviews/answer-question/${sessionId.value}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answer: text,
+          question_id: questionId,
+          factor_key: factorKey
+        })
+      }
+    )
+    
+    const data = await response.json()
+    
+    if (!response.ok || data.detail) {
+      console.error('API 에러:', data)
+      pushBot('답변을 처리하는 중 오류가 발생했어요.', null, null, null, 'error')
+      loading.value = false
+      stopLoadingTimer()
+      return
+    }
+    
+    // 수렴 여부 확인
+    if (data.is_converged && data.analysis) {
+      loadingType.value = 'analyze'
+      loadingText.value = '후회 포인트를 분석 중이에요...'
+      await new Promise(r => setTimeout(r, 800))
+      
+      const llmSummary = data.analysis.llm_summary
+      if (llmSummary) {
+        try {
+          const analysisJson = JSON.parse(llmSummary)
+          let markdown = `# 📊 ${data.analysis.product_name || '제품'} 분석 결과\n\n`
+          
+          if (analysisJson.summary) {
+            markdown += `## 💡 요약\n${analysisJson.summary}\n\n`
+          }
+          
+          if (analysisJson.key_findings && analysisJson.key_findings.length > 0) {
+            markdown += `## 🔍 주요 발견사항\n\n`
+            analysisJson.key_findings.forEach((finding, idx) => {
+              const riskEmoji = finding.risk_level === 'high' ? '🔴' : finding.risk_level === 'mid' ? '🟡' : '🟢'
+              markdown += `### ${idx + 1}. ${finding.factor} ${riskEmoji}\n${finding.what_users_say}\n\n`
+            })
+          }
+          
+          if (analysisJson.balanced_view) {
+            markdown += `## ⚖️ 균형잡힌 시각\n\n`
+            if (analysisJson.balanced_view.pros && analysisJson.balanced_view.pros.length > 0) {
+              markdown += `### ✅ 장점\n`
+              analysisJson.balanced_view.pros.forEach(pro => { markdown += `- ${pro.point}\n` })
+              markdown += `\n`
+            }
+            if (analysisJson.balanced_view.cons && analysisJson.balanced_view.cons.length > 0) {
+              markdown += `### ⚠️ 단점/주의사항\n`
+              analysisJson.balanced_view.cons.forEach(con => { markdown += `- ${con.point}\n` })
+              markdown += `\n`
+            }
+            if (analysisJson.balanced_view.mixed && analysisJson.balanced_view.mixed.length > 0) {
+              markdown += `### 🔄 상황에 따라 다름\n`
+              analysisJson.balanced_view.mixed.forEach(mix => { markdown += `- ${mix.point}\n` })
+              markdown += `\n`
+            }
+          }
+          
+          if (analysisJson.decision_rule) {
+            markdown += `## 🤔 구매 결정 가이드\n\n`
+            if (analysisJson.decision_rule.if_buy && analysisJson.decision_rule.if_buy.length > 0) {
+              markdown += `### 구매를 고려해도 좋은 경우:\n`
+              analysisJson.decision_rule.if_buy.forEach(condition => { markdown += `- ${condition}\n` })
+              markdown += `\n`
+            }
+            if (analysisJson.decision_rule.if_hold && analysisJson.decision_rule.if_hold.length > 0) {
+              markdown += `### 보류가 나은 경우:\n`
+              analysisJson.decision_rule.if_hold.forEach(condition => { markdown += `- ${condition}\n` })
+              markdown += `\n`
+            }
+          }
+          
+          if (analysisJson.final_recommendation) {
+            const recEmoji = analysisJson.final_recommendation === '구매' ? '✅' : 
+                           analysisJson.final_recommendation === '보류' ? '⏸️' : '🔍'
+            markdown += `## ${recEmoji} 최종 추천: ${analysisJson.final_recommendation}\n\n`
+          }
+          
+          if (analysisJson.one_line_tip) {
+            markdown += `> 💬 **Tip:** ${analysisJson.one_line_tip}\n\n`
+          }
+          
+          const htmlContent = convertMarkdownToHtml(markdown)
+          pushBot(htmlContent, null, null, null, 'analyze')
+        } catch (e) {
+          console.error('LLM 분석 결과 파싱 실패:', e)
+          const htmlContent = convertMarkdownToHtml(llmSummary)
+          pushBot(htmlContent, null, null, null, 'analyze')
+        }
+      } else {
+        pushBot('분석이 완료되었습니다.', null, null, null, 'analyze')
+      }
+      
+      pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
+    } else if (data.next_question) {
+      // 다음 질문 표시
+      pushBot(
+        data.next_question.question_text,
+        data.next_question.choices || null,
+        null,
+        null,
+        null,
+        null,
+        data.next_question.question_id,
+        data.next_question.factor_key
+      )
     } else {
-      // 일반 응답 + 옵션
-      pushBot(res.bot_message, res.options)
+      pushBot('질문이 종료되었습니다.', null, null, null, 'alert')
     }
   } catch (e) {
-
-    pushBot('<div class="message-with-icon"><img src="/images/error_icon.png" alt="아이콘" class="message-icon" /><div>죄송해요, 응답을 생성하는 중 오류가 발생했어요. 다시 시도해 주세요.</div></div>')
+    console.error('답변 처리 오류:', e)
+    pushBot('답변을 처리하는 중 오류가 발생했어요.', null, null, null, 'error')
   } finally {
     loading.value = false
     stopLoadingTimer()
   }
 }
 
-/** 4. 후회 포인트 선택 시 리뷰 근거 출력 */
-const selectRegretPoint = async (point) => {
-  pushUser(point)
+/** 4. 후회 포인트 선택 시 리뷰 조회 */
+const selectRegretPoint = async (factorKey) => {
+  // factor_key를 받았지만, 사용자 메시지는 display_name으로 표시하기 위해
+  // regretPoints에서 해당 factor 찾기
+  const lastMessage = messages.value[messages.value.length - 1]
+  const factor = lastMessage?.regretPoints?.find(f => 
+    (typeof f === 'object' && f.factor_key === factorKey) || f === factorKey
+  )
+  const displayName = typeof factor === 'object' ? factor.display_name : factorKey
   
-  console.log('후회 포인트 선택:', point)
-  console.log('현재 세션 ID:', sessionId.value)
+  pushUser(displayName)
   
   loading.value = true
   startLoadingTimer()
@@ -362,69 +577,80 @@ const selectRegretPoint = async (point) => {
   loadingText.value = '관련 리뷰를 찾고 있어요...'
   
   try {
-    // 후회 포인트를 selected_factor로 전달
-    const res = await sendMessage(sessionId.value, point, point)
+    // TODO: v2 API 호출 - 현재는 501 Not Implemented
+    const response = await fetch(`http://localhost:8000/api/v2/reviews/factor-reviews/${sessionId.value}/${factorKey}?limit=5`)
     
-    console.log('sendMessage 응답:', res)
-    
-    // 리뷰 근거 출력 (related_reviews는 객체 형태)
-    const hasReviews = res.related_reviews && Object.keys(res.related_reviews).length > 0
-    
-    if (hasReviews) {
-      // related_reviews 객체를 배열로 변환하고 summary 생성
-      const reviewsArray = []
-      const termCounts = new Map()  // term별 중복 제거를 위해 Map 사용
-      
-      for (const factorKey in res.related_reviews) {
-        const reviewInfo = res.related_reviews[factorKey]
-        
-        if (reviewInfo.examples && reviewInfo.examples.length > 0) {
-          // term_counts 사용 (각 anchor_term별 리뷰 수)
-          if (reviewInfo.term_counts) {
-            for (const [term, count] of Object.entries(reviewInfo.term_counts)) {
-              if (!termCounts.has(term)) {
-                termCounts.set(term, count)
-              }
-            }
-          }
-          
-          // sentences를 문자열로 변환하여 배열에 추가
-          reviewInfo.examples.forEach(example => {
-            const text = Array.isArray(example.sentences) 
-              ? example.sentences.join(' ') 
-              : example.sentences
-            
-            reviewsArray.push({
-              text: text,
-              rating: example.rating
-            })
-          })
-        }
-      }
-      
-      // summary 문구 생성 (중복 제거된 term들로)
-      const reviewSummary = termCounts.size > 0 
-        ? Array.from(termCounts.entries()).map(([term, count]) => `'${term}'에 대해 ${count}건`).join(', ') + '을 찾았어요.'
-        : null
-      
-      console.log('변환된 리뷰 배열:', reviewsArray)
-      console.log('리뷰 요약:', reviewSummary)
+    if (response.status === 501) {
+      // 아직 구현 안 됨
+      loading.value = false
+      stopLoadingTimer()
       
       pushBot(
-        res.bot_message,
-        res.options,
+        `"${displayName}"에 대한 상세 리뷰 분석 기능은 현재 준비 중입니다.<br />다른 후회 포인트를 선택하거나 궁금한 점을 질문해 주세요.`,
+        null,
+        null,
+        null,
+        'alert'
+      )
+      return
+    }
+    
+    const data = await response.json()
+    
+    // 리뷰 표시
+    if (data.reviews && data.reviews.length > 0) {
+      const reviewsArray = data.reviews.map(r => ({
+        text: Array.isArray(r.sentences) ? r.sentences.join(' ') : r.sentences,
+        rating: r.rating
+      }))
+      
+      // anchor_terms를 메시지에 통합
+      let message = `"${displayName}"와 관련된 리뷰를`
+      if (data.anchor_terms && Object.keys(data.anchor_terms).length > 0) {
+        const anchorSummary = Object.entries(data.anchor_terms)
+          .map(([term, count]) => `'${term}' ${count}건`)
+          .join(', ')
+        message = `"${displayName}"와 관련된 리뷰를 ${anchorSummary}을 찾았어요.`
+      } else {
+        message = `"${displayName}"와 관련된 리뷰를 찾았어요.`
+      }
+      
+      pushBot(
+        message,
+        null,
         null,
         reviewsArray,
         null,
-        reviewSummary
+        null
       )
+      
+      // 질문이 있으면 추가
+      if (data.questions && data.questions.length > 0) {
+        const question = data.questions[0]
+        pushBot(
+          question.question_text,
+          question.choices || null,
+          null,
+          null,
+          null,
+          null,
+          question.question_id,
+          factorKey  // 현재 factor_key 저장
+        )
+      }
     } else {
-      pushBot(res.bot_message, res.options)
+      pushBot(`"${displayName}"와 관련된 리뷰를 찾지 못했습니다.`, null, null, null, 'alert')
     }
+    
   } catch (e) {
-    console.error('리뷰 분석 오류:', e)
-    console.error('오류 상세:', e.response?.data)
-    pushBot('<div class="message-with-icon"><img src="/images/ic_x-circle.png" alt="아이콘" class="message-icon" /><p>죄송해요, 리뷰 분석 중 오류가 발생했어요.</p>')
+    console.error('리뷰 조회 오류:', e)
+    pushBot(
+      `"${displayName}"에 대한 리뷰를 불러오는 중 오류가 발생했어요.`,
+      null,
+      null,
+      null,
+      'error'
+    )
   } finally {
     loading.value = false
     stopLoadingTimer()
@@ -437,25 +663,202 @@ const selectOption = async (opt) => {
   loading.value = true
   startLoadingTimer()
   loadingType.value = 'search'
-  loadingText.value = '답변을 생성 중이에요...'
+  loadingText.value = '답변을 처리 중이에요...'
   
   try {
-    const res = await sendMessage(sessionId.value, opt)
+    // 마지막 bot 메시지에서 question_id와 factor_key 찾기
+    // user 메시지를 방금 추가했으므로, 그 이전의 bot 메시지는 length - 2
+    const lastBotMessage = messages.value[messages.value.length - 2]
+    const questionId = lastBotMessage?.questionId
+    const factorKey = lastBotMessage?.factorKey
     
-    // 분석 결과가 준비되었으면 표시
-    if (res.has_analysis && res.llm_context) {
-      const summary = res.llm_context.llm_summary || '분석 결과를 생성했습니다.'
-      const htmlContent = convertMarkdownToHtml(summary)
-      pushBot(htmlContent, null, null, null, 'analyze')
-      
-      // 분석 결과 표시 후 추가 안내 메시지
-      pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요? 제가 분석할 상품 URL을 입력해주세요.')
-    } else {
-      // 분석 결과가 없을 때만 다음 질문이나 메시지 표시
-      if (res.bot_message) {
-        pushBot(res.bot_message, res.options)
+    console.log('=== selectOption DEBUG ===')
+    console.log('lastMessage:', lastBotMessage)
+    console.log('questionId:', questionId)
+    console.log('factorKey:', factorKey)
+    console.log('answer:', opt)
+    
+    // answer-question API 호출
+    const response = await fetch(
+      `http://localhost:8000/api/v2/reviews/answer-question/${sessionId.value}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answer: opt,
+          question_id: questionId,
+          factor_key: factorKey
+        })
       }
+    )
+    
+    const data = await response.json()
+    console.log('answer-question response:', data)
+    
+    // 422 에러 또는 에러 응답 처리
+    if (!response.ok || data.detail) {
+      console.error('API 에러:', data)
+      pushBot(
+        `질문 답변 처리 중 오류가 발생했어요.<br/>에러: ${JSON.stringify(data.detail || data)}`,
+        null,
+        null,
+        null,
+        'error'
+      )
+      loading.value = false
+      stopLoadingTimer()
+      return
     }
+    
+    // 수렴 조건 달성 여부 확인
+    if (data.is_converged && data.analysis) {
+      // loading 메시지를 "분석 중"으로 변경
+      loadingType.value = 'analyze'
+      loadingText.value = '후회 포인트를 분석 중이에요...'
+      
+      // 잠시 대기 (사용자가 메시지 볼 수 있도록)
+      await new Promise(r => setTimeout(r, 800))
+      
+      // LLM 분석 결과 표시
+      const llmSummary = data.analysis.llm_summary
+      
+      if (llmSummary) {
+        // JSON 문자열을 파싱
+        try {
+          const analysisJson = JSON.parse(llmSummary)
+          
+          // 분석 결과를 마크다운 형식으로 구성
+          let markdown = `# 📊 ${data.analysis.product_name || '제품'} 분석 결과\n\n`
+          
+          // summary
+          if (analysisJson.summary) {
+            markdown += `## 💡 요약\n${analysisJson.summary}\n\n`
+          }
+          
+          // key_findings
+          if (analysisJson.key_findings && analysisJson.key_findings.length > 0) {
+            markdown += `## 🔍 주요 발견사항\n\n`
+            analysisJson.key_findings.forEach((finding, idx) => {
+              const riskEmoji = finding.risk_level === 'high' ? '🔴' : finding.risk_level === 'mid' ? '🟡' : '🟢'
+              markdown += `### ${idx + 1}. ${finding.factor} ${riskEmoji}\n`
+              markdown += `${finding.what_users_say}\n\n`
+            })
+          }
+          
+          // balanced_view
+          if (analysisJson.balanced_view) {
+            markdown += `## ⚖️ 균형잡힌 시각\n\n`
+            
+            if (analysisJson.balanced_view.pros && analysisJson.balanced_view.pros.length > 0) {
+              markdown += `### ✅ 장점\n`
+              analysisJson.balanced_view.pros.forEach(pro => {
+                markdown += `- ${pro.point}\n`
+              })
+              markdown += `\n`
+            }
+            
+            if (analysisJson.balanced_view.cons && analysisJson.balanced_view.cons.length > 0) {
+              markdown += `### ⚠️ 단점/주의사항\n`
+              analysisJson.balanced_view.cons.forEach(con => {
+                markdown += `- ${con.point}\n`
+              })
+              markdown += `\n`
+            }
+            
+            if (analysisJson.balanced_view.mixed && analysisJson.balanced_view.mixed.length > 0) {
+              markdown += `### 🔄 상황에 따라 다름\n`
+              analysisJson.balanced_view.mixed.forEach(mix => {
+                markdown += `- ${mix.point}\n`
+              })
+              markdown += `\n`
+            }
+          }
+          
+          // decision_rule
+          if (analysisJson.decision_rule) {
+            markdown += `## 🤔 구매 결정 가이드\n\n`
+            
+            if (analysisJson.decision_rule.if_buy && analysisJson.decision_rule.if_buy.length > 0) {
+              markdown += `### 구매를 고려해도 좋은 경우:\n`
+              analysisJson.decision_rule.if_buy.forEach(condition => {
+                markdown += `- ${condition}\n`
+              })
+              markdown += `\n`
+            }
+            
+            if (analysisJson.decision_rule.if_hold && analysisJson.decision_rule.if_hold.length > 0) {
+              markdown += `### 보류가 나은 경우:\n`
+              analysisJson.decision_rule.if_hold.forEach(condition => {
+                markdown += `- ${condition}\n`
+              })
+              markdown += `\n`
+            }
+          }
+          
+          // final_recommendation
+          if (analysisJson.final_recommendation) {
+            const recEmoji = analysisJson.final_recommendation === '구매' ? '✅' : 
+                           analysisJson.final_recommendation === '보류' ? '⏸️' : '🔍'
+            markdown += `## ${recEmoji} 최종 추천: ${analysisJson.final_recommendation}\n\n`
+          }
+          
+          // one_line_tip
+          if (analysisJson.one_line_tip) {
+            markdown += `> 💬 **Tip:** ${analysisJson.one_line_tip}\n\n`
+          }
+          
+          const htmlContent = convertMarkdownToHtml(markdown)
+          pushBot(htmlContent, null, null, null, 'analyze')
+          
+        } catch (e) {
+          console.error('LLM 분석 결과 파싱 실패:', e)
+          // fallback: 원본 텍스트 표시
+          const htmlContent = convertMarkdownToHtml(llmSummary)
+          pushBot(htmlContent, null, null, null, 'analyze')
+        }
+      } else {
+        // llm_summary가 없으면 기본 메시지
+        pushBot('분석이 완료되었습니다.', null, null, null, 'analyze')
+      }
+      
+      // 추가 안내
+      pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
+    } else if (data.next_question) {
+      // 관련 리뷰가 있으면 먼저 표시
+      if (data.related_reviews && data.related_reviews.length > 0) {
+        const reviewsArray = data.related_reviews.map(r => ({
+          text: r.text,
+          rating: r.rating
+        }))
+        
+        // 백엔드에서 보낸 메시지 사용 (anchor_term별 건수 포함)
+        const message = data.review_message || `관련 리뷰를 찾았어요.`
+        
+        pushBot(
+          message,
+          null,
+          null,
+          reviewsArray
+        )
+      }
+      
+      // 다음 질문 표시
+      pushBot(
+        data.next_question.question_text,
+        data.next_question.choices || null,
+        null,
+        null,
+        null,
+        null,
+        data.next_question.question_id,
+        data.next_question.factor_key
+      )
+    } else {
+      pushBot('질문이 종료되었습니다.', null, null, null, 'alert')
+    }
+  } catch (e) {
+    console.error('질문 답변 처리 오류:', e)
+    pushBot('답변을 처리하는 중 오류가 발생했어요.', null, null, null, 'error')
   } finally {
     loading.value = false
     stopLoadingTimer()
@@ -470,23 +873,23 @@ const clearConversation = async () => {
     // 백엔드에 세션 재분석 요청
     await resetSession(sessionId.value)
     
-    // 분석 결과 메시지(messageType === 'analyze')의 인덱스를 찾음
+    // 첫 번째 분석 결과 메시지(messageType === 'analyze'이고 regretPoints가 있는)의 인덱스를 찾음
     let analyzeMessageIndex = -1
-    for (let i = messages.value.length - 1; i >= 0; i--) {
-      if (messages.value[i].messageType === 'analyze') {
+    for (let i = 0; i < messages.value.length; i++) {
+      if (messages.value[i].messageType === 'analyze' && messages.value[i].regretPoints) {
         analyzeMessageIndex = i
         break
       }
     }
     
     if (analyzeMessageIndex !== -1) {
-      // 분석 결과까지만 남기고 나머지 삭제
+      // 첫 번째 분석 결과까지만 남기고 나머지 삭제
       messages.value = messages.value.slice(0, analyzeMessageIndex + 1)
     } else {
-      // 분석 결과가 없으면 첫 번째 사용자 메시지(URL)까지만 남김
-      const urlInputIndex = messages.value.findIndex(msg => msg.role === 'user')
-      if (urlInputIndex !== -1) {
-        messages.value = messages.value.slice(0, urlInputIndex + 1)
+      // 분석 결과가 없으면 첫 번째 사용자 메시지(상품 선택)까지만 남김
+      const userInputIndex = messages.value.findIndex(msg => msg.role === 'user')
+      if (userInputIndex !== -1) {
+        messages.value = messages.value.slice(0, userInputIndex + 1)
       }
     }
     
@@ -495,8 +898,8 @@ const clearConversation = async () => {
     console.error('세션 재분석 실패:', error)
     // 에러가 발생해도 UI는 초기화
     let analyzeMessageIndex = -1
-    for (let i = messages.value.length - 1; i >= 0; i--) {
-      if (messages.value[i].messageType === 'analyze') {
+    for (let i = 0; i < messages.value.length; i++) {
+      if (messages.value[i].messageType === 'analyze' && messages.value[i].regretPoints) {
         analyzeMessageIndex = i
         break
       }
@@ -505,17 +908,16 @@ const clearConversation = async () => {
     if (analyzeMessageIndex !== -1) {
       messages.value = messages.value.slice(0, analyzeMessageIndex + 1)
     } else {
-      const urlInputIndex = messages.value.findIndex(msg => msg.role === 'user')
-      if (urlInputIndex !== -1) {
-        messages.value = messages.value.slice(0, urlInputIndex + 1)
+      const userInputIndex = messages.value.findIndex(msg => msg.role === 'user')
+      if (userInputIndex !== -1) {
+        messages.value = messages.value.slice(0, userInputIndex + 1)
       }
     }
     
-    scrollBottom()
   }
 }
 
-/** 다른 상품 리뷰 분석 (세션 완전 초기화) */
+/** 다른 상품 분석 시작 (상품 목록 다시 표시) */
 const startNewAnalysis = () => {
   // 모든 메시지 삭제
   messages.value = []
@@ -523,7 +925,80 @@ const startNewAnalysis = () => {
   // 세션 초기화
   sessionId.value = null
   
+  // 분석 모드 복원 (상품 선택 모드 유지)
+  if (useProductSelection.value) {
+    analysisMode.value = 'product'
+  } else {
+    analysisMode.value = null
+  }
+  
   scrollBottom()
+}
+
+/** URL 분석 처리 */
+const handleUrlAnalysis = async (url) => {
+  loading.value = true
+  startLoadingTimer()
+  loadingType.value = 'search'
+  loadingText.value = '상품 리뷰를 수집 중이에요...'
+  
+  try {
+    const res = await startSession(url)
+    sessionId.value = res.session_id      
+    console.log('세션 생성 완료:', res.session_id)
+    console.log('suggested_factors:', res.suggested_factors)
+    
+    // 시스템 상태 메시지 (분석 완료)
+    loadingType.value = 'analyze'
+    loadingText.value = '후회 포인트를 분석 중이에요...'
+    await new Promise(r => setTimeout(r, 800))
+
+    // 후회 포인트 버튼 출력
+    const productName = res.product_name || '이 상품'
+    const reviewCount = res.total_count || 0
+    pushBot(
+      `<span style="color: #017FFF; font-weight: 400;">${productName}</span>의<br />별점 낮은 순으로 ${reviewCount}건에서 후회 포인트를 분석해 보았어요.<br />
+아래 키워드를 선택하면 해당 리뷰 키워드와 관련된 리뷰를 보여드릴께요.<br />
+혹은 궁금하신 점을 질문해 주시면 관련해서 자세히 설명 드릴께요.`,
+      null,
+      res.suggested_factors,
+      null,
+      'analyze'
+    )
+  } catch (e) {
+    const error_prefix = loadingType.value === 'search' ? '리뷰 수집 중' : '후회 포인트 분석 중'
+    
+    // 오류 처리
+    if(loadingType.value === 'search') {
+      loadingType.value = 'error'
+      loadingText.value = '리뷰 수집에 실패했어요.'
+    } else {
+      loadingType.value = 'error'
+      loadingText.value = '후회 포인트 분석에 실패했어요.'
+    }
+    await new Promise(r => setTimeout(r, 1000))
+
+    pushBot(
+      `${error_prefix} 오류가 발생했어요.`,
+      null,
+      null,
+      null,
+      'error'
+    )
+    pushBot(
+      `<strong>ReviewLens</strong>에서 지원하지 않는 URL이거나<br />
+       리뷰 수집에 실패했어요. 다른 URL을 입력해 주세요.`,
+      null,
+      null,
+      null,
+      'alert'
+    )
+    sessionId.value = null
+    analysisMode.value = null
+  } finally {
+    loading.value = false
+    stopLoadingTimer()
+  }
 }
 </script>
 
@@ -764,18 +1239,16 @@ const startNewAnalysis = () => {
   background: #DBF8FA;
   color: #1c1c1e;
   /* padding: 12px 16px; */
-  border-top-left-radius: 20px;
-  border-top-right-radius: 4px;
-  border-bottom-right-radius: 20px;
-  border-bottom-left-radius: 20px;
+  border-radius: 20px 4px 20px 20px;
 }
 
 .message.bot .bubble {
   background: #F4F4F4;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 20px;
-  border-bottom-right-radius: 20px;
-  border-bottom-left-radius: 20px;
+  border-radius: 4px 20px 20px 20px;
+}
+
+.message.bot.welcome .bubble {
+  background: #fff;
 }
 
 .timestamp {
@@ -797,13 +1270,7 @@ const startNewAnalysis = () => {
   gap: 8px;
   padding: 12px 16px;
   background: #fff;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 20px;
-  border-bottom-right-radius: 20px;
-  border-bottom-left-radius: 20px;
-  color: #017FFF;
-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;
-  font-weight: 400;
+  border-radius: 4px 20px 20px 20px;
   font-size: 16px;
   line-height: 150%;
   letter-spacing: -0.32px;

@@ -1,42 +1,41 @@
-# Prometheus 설정 파일 (Docker Compose용)
+# Prometheus 설정 파일
 global:
-  scrape_interval: 10s      # 10초마다 메트릭 수집
-  evaluation_interval: 10s  # 10초마다 규칙 평가
+  scrape_interval: 15s  # 15초마다 메트릭 수집
+  evaluation_interval: 15s  # 15초마다 규칙 평가
   external_labels:
-    cluster: 'reviewlens'
+    monitor: 'reviewlens-monitor'
     environment: 'development'
 
 # Alertmanager 설정 (선택사항)
 # alerting:
 #   alertmanagers:
 #     - static_configs:
-#         - targets:
-#           - alertmanager:9093
+#         - targets: ['alertmanager:9093']
+
+# 규칙 파일 (선택사항)
+# rule_files:
+#   - "alerts/*.yml"
 
 # 스크랩 대상 설정
 scrape_configs:
-  # FastAPI 애플리케이션 메트릭
-  - job_name: 'reviewlens-api'
-    scrape_interval: 10s
-    metrics_path: '/metrics'
-    static_configs:
-      # Docker 컨테이너 내부에서 Windows 호스트 접근
-      - targets: ['host.docker.internal:8000']
-        labels:
-          service: 'reviewlens-api'
-          component: 'backend'
-
-  # Prometheus 자체 메트릭
+  # Prometheus 자체 모니터링
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
-  # 크롤링 스크립트 메트릭 (--metrics-port 옵션 사용 시)
-  # 주의: 스크립트 실행 시 --metrics-port 8001 옵션 필요
-  - job_name: 'crawl-script'
-    scrape_interval: 30s
+  # ReviewLens 백엔드 API
+  - job_name: 'reviewlens-backend'
+    scrape_interval: 10s  # 백엔드는 더 자주 수집
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:8001']
+      - targets: ['host.docker.internal:8000']  # Docker에서 호스트 머신 접근
         labels:
-          service: 'crawl-script'
-          component: 'crawler'
+          service: 'reviewlens-api'
+          env: 'dev'
+    
+    # 메트릭 재라벨링 (선택사항)
+    metric_relabel_configs:
+      # 불필요한 메트릭 제외 예시
+      - source_labels: [__name__]
+        regex: 'go_.*'
+        action: drop

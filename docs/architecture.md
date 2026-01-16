@@ -1,53 +1,69 @@
-# ReviewLens 시스템 아키텍처
+# ReviewLens V2 시스템 아키텍처
+
+> **V2 업데이트 (2026-01-17)**: Clean Architecture 적용, 레거시 제거, 3-5턴 대화 플로우 완성
 
 ReviewLens는 제품 리뷰를 분석하여 구매 후회 요인을 찾아내는 대화형 AI 시스템입니다.
 
 ## 목차
 
-- [전체 시스템 아키텍처](#전체-시스템-아키텍처)
-- [데이터 수집 계층](#데이터-수집-계층)
-- [분석 파이프라인](#분석-파이프라인)
+- [Clean Architecture 개요](#clean-architecture-개요)
+- [계층별 구조](#계층별-구조)
+- [데이터 플로우](#데이터-플로우)
 - [대화 엔진](#대화-엔진)
 - [LLM 통합](#llm-통합)
-- [모니터링 계층](#모니터링-계층)
-- [배포 아키텍처](#배포-아키텍처)
+- [세션 관리](#세션-관리)
+- [모니터링](#모니터링)
 
 ---
 
-## 전체 시스템 아키텍처
+## Clean Architecture 개요
+
+V2는 Clean Architecture 원칙을 따라 다음과 같이 계층을 분리했습니다:
 
 ```mermaid
 graph TB
-    subgraph "1️⃣ 데이터 수집 계층"
-        A1[스마트스토어<br/>크롤러]
-        A2[리뷰 데이터<br/>JSON/CSV]
-        A3[Factor 분석기<br/>후회 요인 추출]
-        A4[Question 생성기<br/>대화 질문 생성]
-        
-        A1 -->|크롤링| A2
-        A2 -->|분석| A3
-        A3 -->|생성| A4
+    subgraph "API Layer"
+        A1[review.py<br/>V2 엔드포인트]
+        A2[health.py<br/>Health check]
     end
     
-    subgraph "2️⃣ 데이터 저장소"
-        B1[(reviews.csv<br/>리뷰 원본)]
-        B2[(factors.csv<br/>후회 요인)]
-        B3[(questions.csv<br/>대화 질문)]
-        
-        A2 --> B1
-        A3 --> B2
-        A4 --> B3
+    subgraph "Domain Layer<br/>(비즈니스 로직)"
+        D1[dialogue/session.py<br/>대화 엔진]
+        D2[review/scoring.py<br/>Factor 점수]
+        D3[review/retrieval.py<br/>증거 추출]
+        D4[reg/store.py<br/>CSV 로딩]
     end
     
-    subgraph "3️⃣ 백엔드 API Layer"
-        C1[FastAPI Server<br/>:8000]
-        C2[Metrics Middleware<br/>성능 측정]
-        C3[CORS Middleware<br/>보안]
-        
-        C2 -.-> C1
-        C3 -.-> C1
+    subgraph "Infrastructure Layer"
+        I1[observability/metrics.py<br/>Prometheus]
+        I2[session/store.py<br/>세션 저장]
     end
     
+    subgraph "External"
+        E1[LLM<br/>OpenAI/Claude/Gemini]
+        E2[CSV Files<br/>Factor/Question]
+        E3[Review JSON<br/>사전 수집]
+    end
+    
+    A1 --> D1
+    A1 --> D2
+    A1 --> D3
+    D1 --> D4
+    D1 --> E1
+    D2 --> E2
+    D3 --> E3
+    A1 --> I1
+    A1 --> I2
+```
+
+### 핵심 원칙
+- **의존성 역전**: Domain은 Infrastructure를 알지 못함
+- **단일 책임**: 각 모듈은 하나의 책임만
+- **테스트 용이성**: Domain 로직은 순수 Python (FastAPI 의존성 없음)
+
+---
+
+## 계층별 구조
     subgraph "4️⃣ 대화 엔진 Core"
         D1[Session Manager<br/>세션 관리]
         D2[Dialogue Engine<br/>대화 수렴 로직]
@@ -230,49 +246,68 @@ question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_h
 
 ## 분석 파이프라인
 
-### 1. 세션 초기화 및 데이터 로딩
+### 1. 세션 초기화 및 데이터 로딩 (상품 선택 모드)
 
 ```mermaid
 flowchart TD
-    A[사용자 제품 URL 입력] --> B[URL 검증]
-    B --> C{해당 제품 리뷰 데이터<br/>이미 존재?}
+    A[사용자 상품 선택<br/>드롭다운] --> B[product_name 전송]
+    B --> C[reg_factor_v4.csv에서<br/>category 조회]
     
-    C -->|Yes| D[캐시된 리뷰 로드<br/>세션 저장소]
-    C -->|No| E[크롤링 트리거]
+    C --> D{Category 매핑<br/>earbuds→earphone 등}
+    D --> E[backend/data/review/<br/>해당 JSON 파일 검색]
     
-    E --> F[Selenium WebDriver 실행]
-    F --> G[리뷰 수집 & 세션 저장]
-    G --> D
+    E --> F{JSON 파일<br/>존재?}
+    F -->|Yes| G[리뷰 로드<br/>Array/Object 형식 자동 처리]
+    F -->|No| H[404 Error<br/>리뷰 파일 없음]
     
-    D --> H[DialogueSession 생성]
-    H --> I[Category 필터링]
-    I --> J[Factor Map 생성]
-    J --> K[세션 준비 완료]
+    G --> I[FactorAnalyzer로<br/>리뷰-Factor 매칭]
     
-    K --> L{메트릭 기록}
-    L -->|dialogue_sessions_total| M[Prometheus]
+    I --> J[aggregate_factors()<br/>Top 5 후회 요인 추출]
+    J --> K[DialogueSession 생성]
+    K --> L[Category 필터링]
+    L --> M[Factor Map 생성]
+    M --> N[세션 준비 완료]
     
-    style H fill:#e1f5dd
-    style L fill:#fce4ec
+    N --> O{메트릭 기록}
+    O -->|dialogue_sessions_total| P[Prometheus]
+    
+    style K fill:#e1f5dd
+    style O fill:#fce4ec
 ```
 
-**주요 로직** (`backend/pipeline/dialogue.py`):
+**주요 로직** (`backend/app/api/routes_chat.py`):
 
 ```python
-class DialogueSession:
-    def __init__(self, category, data_dir, reviews_df=None):
-        # 1. 데이터 로드
-        # - reviews_df: 세션 저장소에서 전달받은 리뷰 (운영)
-        # - None: CSV에서 로드 (테스트/개발)
-        self.reviews_df = reviews_df
-        
-        # 2. Factor/Question 파싱
-        all_factors = parse_factors(factors_df)
-        self.factors = [f for f in all_factors if f.category == category]
-        self.questions = parse_questions(questions_df)
-        
-        # 3. 메트릭 기록
-        dialogue_sessions_total.labels(category=category).inc()
+@router.post("/analyze-product")
+async def analyze_product(product_name: str):
+    # 1. Factor CSV에서 상품명으로 category 찾기
+    df = pd.read_csv(settings.FACTOR_CSV_PATH)
+    product_rows = df[df['product_name'] == product_name]
+    category = product_rows.iloc[0]['category']
+    
+    # 2. Category 매핑 (earbuds → earphone 등)
+    category_mapping = {
+        'earbuds': 'earphone',
+        'coffee_machine': 'coffee_machine',
+        'induction': 'induction',
+        # ... 10개 카테고리
+    }
+    file_category = category_mapping.get(category, category)
+    
+    # 3. JSON 파일 찾기 및 로드
+    review_dir = Path(settings.REVIEW_JSON_DIR)
+    json_files = list(review_dir.glob("*.json"))
+    target_file = next((f for f in json_files if file_category in f.name), None)
+    
+    # 4. FactorAnalyzer로 리뷰-Factor 매칭
+    analyzer = FactorAnalyzer(settings.FACTOR_CSV_PATH)
+    matched_reviews = []
+    for review in reviews:
+        factor_matches = analyzer.analyze_review(review['text'])
+        matched_reviews.append({
+            'review_id': review['review_id'],
+            'matched_factors': factor_matches
+        })
 ```
 
 ### 2. 대화 턴 처리 (Factor Convergence)
@@ -1249,6 +1284,253 @@ def normalize(text, lang='ko'):
 
 ---
 
+## 세션 영속성 (Session Persistence)
+
+### 1. 아키텍처
+
+```mermaid
+graph TB
+    A[FastAPI 서버 시작] --> B[SessionStore.restore_all]
+    B --> C{out/sessions/*.json<br/>파일 존재?}
+    
+    C -->|Yes| D[세션 파일 로드]
+    C -->|No| E[빈 세션으로 시작]
+    
+    D --> F[DialogueSession 재생성]
+    F --> G[리뷰 데이터 복원]
+    G --> H[메타데이터 복원]
+    H --> I[세션 준비 완료]
+    
+    J[새 세션 생성] --> K[SessionStore._save_session]
+    K --> L[JSON 파일 저장<br/>out/sessions/UUID.json]
+    
+    M[세션 업데이트] --> K
+    
+    style D fill:#c8e6c9
+    style L fill:#fff9c4
+```
+
+### 2. 세션 파일 구조
+
+```json
+{
+  "session_id": "c6a10728-94dd-4241-8fb9-bf3cfd229ab4",
+  "category": "mattress",
+  "product_name": "지누스 그린티 메모리폼 매트리스",
+  "product_url": "https://brand.naver.com/zinus/products/3743902988",
+  "reviews": [...],
+  "created_at": "2026-01-15T23:26:29",
+  "updated_at": "2026-01-15T23:28:15"
+}
+```
+
+**참고**: LLM 설정(provider, model)은 서비스 레벨에서 환경 변수로 관리되며, 모든 세션이 동일한 설정을 사용합니다.
+
+### 3. 리뷰 캐싱
+
+```mermaid
+flowchart LR
+    A[리뷰 수집 요청] --> B{캐시 확인}
+    B -->|Hit| C[캐시된 데이터 반환<br/>즉시 응답]
+    B -->|Miss| D[크롤링 실행]
+    D --> E[세션 저장]
+    E --> F[캐시 업데이트]
+    F --> G[응답 반환]
+    
+    style C fill:#c8e6c9
+    style D fill:#ffcdd2
+```
+
+**캐시 키**: `{URL}|{max_reviews}|{sort_by_low_rating}`
+
+### 4. Term 변환 (6가지 형태소 규칙)
+
+사용자 친화적인 용어 표시를 위한 한글 형태소 변환:
+
+```python
+def _convert_term_for_display(term: str) -> str:
+    """형태소 변환 규칙"""
+    if term.endswith('프'):
+        return term[:-1] + '픔'      # 아프 → 아픔
+    elif term.endswith(('운', '른')):
+        return term[:-1] + '움'       # 무거운 → 무거움
+    elif term.endswith('워'):
+        return term[:-1] + '움'       # 무거워 → 무거움
+    elif term.endswith('어'):
+        return term[:-1] + '음'       # 길어 → 김
+    elif term.endswith('거'):
+        return term + '움'            # 뜨거 → 뜨거움
+    elif term.endswith('려'):
+        return term[:-1] + '림'       # 걸려 → 걸림
+    return term
+```
+
+---
+
+## API 엔드포인트
+
+### 1. 세션 관리
+
+#### POST /api/chat/start
+세션 시작 (더 이상 사용되지 않음, collect-reviews로 대체)
+
+**Request**:
+```json
+{
+  "category": "mattress",
+  "provider": "openai",
+  "model_name": "gpt-4o-mini"
+}
+```
+
+**Response**:
+```json
+{
+  "session_id": "uuid",
+  "message": "세션이 시작되었습니다"
+}
+```
+
+#### POST /api/chat/collect-reviews
+리뷰 수집 및 분석 (캐싱 지원)
+
+**Request**:
+```json
+{
+  "product_url": "https://brand.naver.com/...",
+  "max_reviews": 100,
+  "sort_by_low_rating": true,
+  "category": "mattress"  // 선택적
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "session_id": "uuid",
+  "product_name": "제품명",
+  "total_count": 100,
+  "suggested_factors": ["허리 통증", "과도한 꺼짐", ...],
+  "detected_category": "mattress",
+  "category_confidence": "high"
+}
+```
+
+#### POST /api/chat/reset-session
+세션 재분석 (대화만 초기화, 리뷰 데이터 유지)
+
+**Request**:
+```json
+{
+  "session_id": "uuid"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "대화가 초기화되었습니다"
+}
+```
+
+### 2. 대화 처리
+
+#### POST /api/chat/message
+메시지 전송 및 응답
+
+**Request**:
+```json
+{
+  "session_id": "uuid",
+  "message": "가끔 뻐근해요",
+  "selected_factor": "허리 통증"  // 선택적
+}
+```
+
+**Response**:
+```json
+{
+  "session_id": "uuid",
+  "bot_message": "너무 푹신해서 몸이 가라앉는 느낌이 불편하신가요?",
+  "is_final": false,
+  "has_analysis": false,
+  "options": ["매우 불편함", "보통", "괜찮음"],
+  "top_factors": [
+    {"factor_key": "back_pain", "score": 6.0}
+  ],
+  "related_reviews": {...}
+}
+```
+
+---
+
+## 대화 엔진 개선사항
+
+### 1. 카테고리별 Fallback 질문
+
+기존: 일반적인 질문 3개
+```python
+defaults = [
+    "구매 전에 가장 걱정되는 점은?",
+    "사용 환경은 어떤가요?",
+    "실망했던 경험이 있나요?"
+]
+```
+
+개선: 10개 카테고리별 맞춤 질문
+```python
+category_questions = {
+    'mattress': [
+        "평소 어떤 자세로 주로 주무시나요?",
+        "현재 매트리스에서 가장 불편한 점은?",
+        "지지력/푹신함 중 무엇이 중요한가요?"
+    ],
+    'chair': [...],
+    'earbuds': [...],
+    ...  # 총 10개 카테고리
+}
+```
+
+**지원 카테고리**:
+- mattress (매트리스)
+- chair (의자)
+- bedding_cleaner (침구청소기)
+- bedding_robot (침구로봇)
+- bookshelf (책장)
+- coffee_machine (커피머신)
+- desk (책상)
+- earbuds (이어폰)
+- humidifier (가습기)
+- induction (인덕션)
+
+### 2. Settings 통합
+
+모든 설정값을 `backend/app/core/settings.py`에서 중앙 관리:
+
+```python
+class Settings(BaseSettings):
+    # Dialogue 설정
+    DIALOGUE_JACCARD_THRESHOLD: float = 0.67
+    DIALOGUE_MIN_ANALYSIS_TURNS: int = 3
+    DIALOGUE_FOCUS_TURNS_THRESHOLD: int = 2
+    
+    # Evidence 설정
+    EVIDENCE_PER_FACTOR_MIN: int = 8
+    EVIDENCE_PER_FACTOR_MAX: int = 8
+    EVIDENCE_MAX_TOTAL: int = 15
+    
+    # CORS 설정
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000"
+    ]
+```
+
+---
+
 ## 참고 문서
 
 - [README.md](../README.md) - 프로젝트 개요
@@ -1262,6 +1544,6 @@ def normalize(text, lang='ko'):
 
 ---
 
-**문서 버전**: 2.0  
-**최종 업데이트**: 2026-01-04  
+**문서 버전**: 2.1  
+**최종 업데이트**: 2026-01-16  
 **작성자**: ReviewLens Team

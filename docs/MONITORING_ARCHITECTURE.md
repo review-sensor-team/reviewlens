@@ -1,5 +1,8 @@
 # ReviewLens 모니터링 아키텍처 상세 문서
 
+> **💡 빠른 시작 가이드**: 실제 설치 및 사용 방법은 [`monitoring/README.md`](../monitoring/README.md)를 참고하세요.  
+> 이 문서는 모니터링 시스템의 아키텍처와 설계 원칙에 대한 상세 설명을 제공합니다.
+
 ## 목차
 - [개요](#개요)
 - [아키텍처 설계](#아키텍처-설계)
@@ -637,6 +640,48 @@ sum by (provider) (rate(llm_duration_seconds_count[5m]))
 
 ## 배포 전략
 
+### 자동화 스크립트 배포 (권장 - macOS)
+
+#### 재시작 스크립트
+
+**파일**: `scripts/monitor_restart.sh`
+
+```bash
+# 모니터링 시스템 완전 자동화 재시작
+./scripts/monitor_restart.sh
+```
+
+**기능**:
+- ✅ 기존 프로세스 자동 종료
+- ✅ Homebrew를 통한 자동 설치 (미설치 시)
+- ✅ 설정 파일 자동 업데이트 (`prometheus.yml`, Grafana 포트 3001)
+- ✅ 서비스 자동 시작 및 헬스체크
+- ✅ 로그 위치: `/tmp/reviewlens-monitoring/`
+
+#### 중지 스크립트
+
+**파일**: `scripts/monitor_stop.sh`
+
+```bash
+# 모니터링 시스템 중지
+./scripts/monitor_stop.sh
+```
+
+**기능**:
+- Prometheus 프로세스 종료 (`pkill -f "prometheus.*config.file"`)
+- Grafana 프로세스 종료 (`pkill -f "grafana.*server"`)
+- 종료 확인 및 강제 종료 명령어 안내
+
+#### 로그 확인
+
+```bash
+# Prometheus 로그
+tail -f /tmp/reviewlens-monitoring/prometheus.log
+
+# Grafana 로그
+tail -f /tmp/reviewlens-monitoring/grafana.log
+```
+
 ### Docker Compose 배포
 
 #### 시작
@@ -668,9 +713,33 @@ docker-compose -f docker-compose.monitoring.yml restart prometheus
 docker-compose -f docker-compose.monitoring.yml restart grafana
 ```
 
-### 로컬 바이너리 배포
+### 수동 로컬 바이너리 배포
 
-#### 시작 스크립트
+#### Homebrew 설치 (macOS)
+
+```bash
+# 1. 설치
+brew install prometheus grafana
+
+# 2. 설정 복사
+cp monitoring/prometheus.yml /opt/homebrew/etc/prometheus.yml
+
+# 3. Grafana 포트 변경 (3000 → 3001)
+# /opt/homebrew/etc/grafana/grafana.ini 수정
+# http_port = 3001
+
+# 4. 시작
+prometheus --config.file=/opt/homebrew/etc/prometheus.yml \
+  --storage.tsdb.path=/opt/homebrew/var/prometheus \
+  > /tmp/prometheus.log 2>&1 &
+
+grafana server \
+  --config /opt/homebrew/etc/grafana/grafana.ini \
+  --homepath /opt/homebrew/opt/grafana/share/grafana \
+  > /tmp/grafana.log 2>&1 &
+```
+
+#### 바이너리 다운로드 스크립트 (구버전)
 
 **파일**: `scripts/start_monitoring.sh`
 
@@ -680,18 +749,13 @@ docker-compose -f docker-compose.monitoring.yml restart grafana
 # Prometheus/Grafana 다운로드
 # 설정 파일 적용
 # 프로세스 시작
-# PID 저장
 ```
-
-#### 종료 스크립트
 
 **파일**: `scripts/stop_monitoring.sh`
 
 ```bash
 #!/bin/bash
-# PID 파일에서 프로세스 ID 읽기
 # 프로세스 종료 (SIGTERM)
-# PID 파일 삭제
 ```
 
 ---
@@ -847,11 +911,18 @@ groups:
 
 ### 환경별 배포 전략
 
-#### 개발 환경 (로컬)
-✅ **로컬 바이너리 방식** - 간단하고 빠름
+#### 개발 환경 (로컬 - macOS)
+✅ **자동화 스크립트 방식** (최우선 권장) - 설치부터 설정까지 완전 자동화
 
 ```bash
-./scripts/start_monitoring.sh
+./scripts/monitor_restart.sh
+```
+
+#### 개발 환경 (로컬 - Linux/Windows)
+✅ **Docker Compose 방식** - 플랫폼 독립적
+
+```bash
+docker-compose -f docker-compose.monitoring.yml up -d
 ```
 
 #### 프로덕션 환경
@@ -1039,7 +1110,8 @@ EOF
 
 | 환경 | 추천 방식 | 이유 |
 |------|----------|------|
-| **로컬 개발** | 로컬 바이너리 | 간단, 빠름 |
+| **로컬 개발 (macOS)** | 자동화 스크립트 | 완전 자동화, 설정 불필요 |
+| **로컬 개발 (기타)** | Docker Compose | 플랫폼 독립적 |
 | **스테이징** | Docker Compose | 프로덕션과 동일 환경 |
 | **프로덕션 (소규모)** | Docker Compose | 관리 간편, 비용 낮음 |
 | **프로덕션 (중규모)** | Kubernetes | 스케일링, HA |

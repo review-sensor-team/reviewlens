@@ -1,0 +1,88 @@
+{
+  "top_factors": [
+    [
+      "humidity_output",
+      0.39
+    ]
+  ],
+  "evidence_reviews": [
+    {
+      "review_id": "187831535600",
+      "rating": 1,
+      "excerpt": "가열식이라고 따뜻한 수증기가 나오기를 기대했는데 별로 따신 느낌은 안나네요.",
+      "reason": [
+        "humidity_output+anchor",
+        "humidity_output+context"
+      ],
+      "factor": "humidity_output",
+      "score": 3.0420000000000003,
+      "label": "NEG"
+    },
+    {
+      "review_id": "1007554458564",
+      "rating": 1,
+      "excerpt": "내가 이걸 왜 샀을까...돈만 버렸네...모르겠어요 저는 정말 별로였어요. 가습?",
+      "reason": [
+        "humidity_output+anchor",
+        "humidity_output+context"
+      ],
+      "factor": "humidity_output",
+      "score": 3.0420000000000003,
+      "label": "MIX"
+    },
+    {
+      "review_id": "704919367853",
+      "rating": 1,
+      "excerpt": "온풍기, 캠핑조명, 음식물처리기 등 다양한 루메나 제품을 쓰고 있어서, 가습기도 장만했습니다만 정말 별로입니다. 이번 가습기 구매는 말리고 싶네요. 이번 가습기 구매를 계기로 저 같은 충성고객들의 이탈도 있은 것 같아요. 저도 이제 가습기 같은 루메나의 가전제품은 사지 않을 것 같습니다",
+      "reason": [
+        "humidity_output+anchor",
+        "humidity_output+context"
+      ],
+      "factor": "humidity_output",
+      "score": 3.0420000000000003,
+      "label": "MIX"
+    },
+    {
+      "review_id": "967321286619",
+      "rating": 3,
+      "excerpt": "일단 배송이N배송이였지만 2일 뒤에 왔고 이에 대처부분이 미흡했고, 다른 리뷰들과 다르게 가열도 미적지근하고 분무량도 이게 맥스? 다른 집에있는 가습기는 3단보다 못해요 문의 남겼더니 무어라 얘기는 해주셨는데 그렇게 해도 안되요 뽑기 잘못했나봅니다 반품하려했는데 바쁘고 귀찮아서 그냥 씁",
+      "reason": [
+        "humidity_output+anchor",
+        "humidity_output+context"
+      ],
+      "factor": "humidity_output",
+      "score": 2.366,
+      "label": "NEG"
+    },
+    {
+      "review_id": "970339624170",
+      "rating": 3,
+      "excerpt": "습도가 직관적으로 보여서 좋여요.",
+      "reason": [
+        "humidity_output+anchor",
+        "humidity_output+context",
+        "humidity_output+negation"
+      ],
+      "factor": "humidity_output",
+      "score": 2.366,
+      "label": "POS"
+    },
+    {
+      "review_id": "907173430785",
+      "rating": 3,
+      "excerpt": "생각보다 청소가 귀찮은 구조이고 불편했습니다 이쁘고 따뜻한 가습력은 좋아요",
+      "reason": [
+        "humidity_output+anchor",
+        "humidity_output+context",
+        "humidity_output+negation"
+      ],
+      "factor": "humidity_output",
+      "score": 2.366,
+      "label": "NEG"
+    }
+  ],
+  "total_turns": 3,
+  "category_name": "가열식 가습기",
+  "product_name": "이 제품",
+  "timestamp": "2026-01-11T22:40:11.894413"
+}
