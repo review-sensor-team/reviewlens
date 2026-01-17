@@ -26,7 +26,7 @@ from ...core.settings import Settings
 
 settings = Settings()
 
-logger = logging.getLogger("pipeline.dialogue")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -90,9 +90,6 @@ class DialogueSession:
             self.reviews_df, factors_df, questions_df = load_csvs(self.data_dir)
             logger.debug(f"  - reviews: {len(self.reviews_df)}건 (CSV), factors: {len(factors_df)}건, questions: {len(questions_df)}건")
         
-        # Parse questions
-        self.questions = parse_questions(questions_df)
-        
         # 모든 factor 파싱 후 현재 카테고리만 필터링
         all_factors = parse_factors(factors_df)
         self.factors = [f for f in all_factors if f.category == self.category]
@@ -100,8 +97,16 @@ class DialogueSession:
         # factor_id와 factor_key 모두로 인덱싱 (하위 호환성)
         self.factors_map = {f.factor_key: f for f in self.factors}
         self.factors_by_id = {f.factor_id: f for f in self.factors}
+        
+        # 현재 카테고리의 factor_id 목록
+        category_factor_ids = {f.factor_id for f in self.factors}
+        
+        # Parse questions - 현재 카테고리의 factor_id에 해당하는 질문만 필터링
+        all_questions = parse_questions(questions_df)
+        self.questions = [q for q in all_questions if q.factor_id in category_factor_ids]
+        
         logger.info(f"  - 전체 factors: {len(all_factors)}개 → 카테고리 '{self.category}' 필터링: {len(self.factors)}개")
-        logger.info(f"  - 전체 questions: {len(self.questions)}개")
+        logger.info(f"  - 전체 questions: {len(all_questions)}개 → 카테고리 '{self.category}' 필터링: {len(self.questions)}개")
 
         # category slug 추출(빈 값이면 fallback)
         self.category_slug = category

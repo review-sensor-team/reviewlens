@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import pandas as pd
 
-logger = logging.getLogger("session.persistence")
+logger = logging.getLogger(__name__)
 
 
 class SessionPersistence:

@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import pandas as pd
 
-logger = logging.getLogger("services.review")
+logger = logging.getLogger(__name__)
 
 
 class ReviewService:

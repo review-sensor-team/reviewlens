@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from ...services.review_service import ReviewService
 from ...core.settings import settings
 
-logger = logging.getLogger("api.routers.review")
+logger = logging.getLogger(__name__)
 
 # 라우터 생성
 router = APIRouter(prefix="/api/v2/reviews", tags=["reviews"])
@@ -287,6 +287,7 @@ async def analyze_product(
         factor_map = {f.factor_key: f for f in factors}
         suggested_factors = [
             {
+                "factor_id": factor_map[factor_key].factor_id,
                 "factor_key": factor_key,
                 "display_name": factor_map[factor_key].display_name
             }
@@ -314,8 +315,8 @@ async def analyze_product(
             "suggested_factors": suggested_factors,
             "product_name": product_name,
             "total_count": len(normalized_df),
-            "category": category_name,
-            "category_key": category
+            "category": category,
+            "category_name": category_name
         }
         
     except HTTPException:

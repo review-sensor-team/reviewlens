@@ -11,7 +11,7 @@ import pandas as pd
 from .normalize import normalize_text as normalize
 from ..reg.store import Factor
 
-logger = logging.getLogger("domain.review.scoring")
+logger = logging.getLogger(__name__)
 
 
 def score_text_against_factor(norm_text: str, factor: Factor) -> Tuple[float, List[str], bool]:

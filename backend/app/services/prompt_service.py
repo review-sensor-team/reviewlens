@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-logger = logging.getLogger("services.prompt")
+logger = logging.getLogger(__name__)
 
 
 class PromptService:

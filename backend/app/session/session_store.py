@@ -8,7 +8,7 @@ import pandas as pd
 from backend.app.domain.dialogue.session import DialogueSession
 from backend.app.infra.persistence.session_repo import SessionPersistence
 
-logger = logging.getLogger("backend.app.session.session_store")
+logger = logging.getLogger(__name__)
 
 
 class SessionStore:

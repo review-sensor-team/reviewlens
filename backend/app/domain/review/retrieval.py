@@ -13,7 +13,7 @@ import pandas as pd
 from .normalize import normalize_text as normalize
 from ..reg.store import Factor
 
-logger = logging.getLogger("domain.review.retrieval")
+logger = logging.getLogger(__name__)
 
 
 _SENT_SPLIT_RE = re.compile(r"(?<=[\.!?。！？])\s+|\n+")

@@ -27,7 +27,7 @@ else:
 
 # 로깅 시스템 초기화
 setup_logging()
-logger = logging.getLogger("api")
+logger = logging.getLogger(__name__)
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):

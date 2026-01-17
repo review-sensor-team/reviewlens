@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
 
-logger = logging.getLogger("services.chat")
+logger = logging.getLogger(__name__)
 
 
 class ChatService:

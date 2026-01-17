@@ -8,7 +8,7 @@ import pandas as pd
 
 from .review_loader import ReviewLoader
 
-logger = logging.getLogger("infra.loaders.json")
+logger = logging.getLogger(__name__)
 
 
 class JSONReviewLoader(ReviewLoader):
