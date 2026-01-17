@@ -3,6 +3,7 @@
 리뷰 수집 및 분석 API
 """
 import logging
+import random
 from typing import Optional
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
@@ -668,21 +669,23 @@ async def answer_question(
                 asked_fallbacks = set(session_data["asked_fallback_questions"])
                 
                 # 아직 묻지 않은 fallback 질문 찾기
-                for fb_q in fallback_questions:
-                    if fb_q not in asked_fallbacks:
-                        next_question = {
-                            "question_id": None,  # fallback은 ID 없음
-                            "question_text": fb_q,
-                            "answer_type": "no_choice",
-                            "choices": [],
-                            "next_factor_hint": "",
-                            "factor_key": current_factor_key,
-                            "is_fallback": True  # fallback 표시
-                        }
-                        # 세션에 fallback 질문 기록
-                        session_data["asked_fallback_questions"].append(fb_q)
-                        logger.info(f"Fallback 질문 사용: {fb_q}")
-                        break
+                unasked_fallbacks = [q for q in fallback_questions if q not in asked_fallbacks]
+                
+                if unasked_fallbacks:
+                    # 랜덤하게 선택
+                    fb_q = random.choice(unasked_fallbacks)
+                    next_question = {
+                        "question_id": None,  # fallback은 ID 없음
+                        "question_text": fb_q,
+                        "answer_type": "no_choice",
+                        "choices": [],
+                        "next_factor_hint": "",
+                        "factor_key": current_factor_key,
+                        "is_fallback": True  # fallback 표시
+                    }
+                    # 세션에 fallback 질문 기록
+                    session_data["asked_fallback_questions"].append(fb_q)
+                    logger.info(f"Fallback 질문 랜덤 선택: {fb_q}")
             
             if next_question is None and len(related_questions) > 0:
                 # 첫 번째 질문 선택 (factor 질문)
