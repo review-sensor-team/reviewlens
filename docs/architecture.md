@@ -1,53 +1,69 @@
-# ReviewLens 시스템 아키텍처
+# ReviewLens V2 시스템 아키텍처
+
+> **V2 업데이트 (2026-01-17)**: Clean Architecture 적용, 레거시 제거, 3-5턴 대화 플로우 완성
 
 ReviewLens는 제품 리뷰를 분석하여 구매 후회 요인을 찾아내는 대화형 AI 시스템입니다.
 
 ## 목차
 
-- [전체 시스템 아키텍처](#전체-시스템-아키텍처)
-- [데이터 수집 계층](#데이터-수집-계층)
-- [분석 파이프라인](#분석-파이프라인)
+- [Clean Architecture 개요](#clean-architecture-개요)
+- [계층별 구조](#계층별-구조)
+- [데이터 플로우](#데이터-플로우)
 - [대화 엔진](#대화-엔진)
 - [LLM 통합](#llm-통합)
-- [모니터링 계층](#모니터링-계층)
-- [배포 아키텍처](#배포-아키텍처)
+- [세션 관리](#세션-관리)
+- [모니터링](#모니터링)
 
 ---
 
-## 전체 시스템 아키텍처
+## Clean Architecture 개요
+
+V2는 Clean Architecture 원칙을 따라 다음과 같이 계층을 분리했습니다:
 
 ```mermaid
 graph TB
-    subgraph "1️⃣ 데이터 수집 계층"
-        A1[스마트스토어<br/>크롤러]
-        A2[리뷰 데이터<br/>JSON/CSV]
-        A3[Factor 분석기<br/>후회 요인 추출]
-        A4[Question 생성기<br/>대화 질문 생성]
-        
-        A1 -->|크롤링| A2
-        A2 -->|분석| A3
-        A3 -->|생성| A4
+    subgraph "API Layer"
+        A1[review.py<br/>V2 엔드포인트]
+        A2[health.py<br/>Health check]
     end
     
-    subgraph "2️⃣ 데이터 저장소"
-        B1[(reviews.csv<br/>리뷰 원본)]
-        B2[(factors.csv<br/>후회 요인)]
-        B3[(questions.csv<br/>대화 질문)]
-        
-        A2 --> B1
-        A3 --> B2
-        A4 --> B3
+    subgraph "Domain Layer<br/>(비즈니스 로직)"
+        D1[dialogue/session.py<br/>대화 엔진]
+        D2[review/scoring.py<br/>Factor 점수]
+        D3[review/retrieval.py<br/>증거 추출]
+        D4[reg/store.py<br/>CSV 로딩]
     end
     
-    subgraph "3️⃣ 백엔드 API Layer"
-        C1[FastAPI Server<br/>:8000]
-        C2[Metrics Middleware<br/>성능 측정]
-        C3[CORS Middleware<br/>보안]
-        
-        C2 -.-> C1
-        C3 -.-> C1
+    subgraph "Infrastructure Layer"
+        I1[observability/metrics.py<br/>Prometheus]
+        I2[session/store.py<br/>세션 저장]
     end
     
+    subgraph "External"
+        E1[LLM<br/>OpenAI/Claude/Gemini]
+        E2[CSV Files<br/>Factor/Question]
+        E3[Review JSON<br/>사전 수집]
+    end
+    
+    A1 --> D1
+    A1 --> D2
+    A1 --> D3
+    D1 --> D4
+    D1 --> E1
+    D2 --> E2
+    D3 --> E3
+    A1 --> I1
+    A1 --> I2
+```
+
+### 핵심 원칙
+- **의존성 역전**: Domain은 Infrastructure를 알지 못함
+- **단일 책임**: 각 모듈은 하나의 책임만
+- **테스트 용이성**: Domain 로직은 순수 Python (FastAPI 의존성 없음)
+
+---
+
+## 계층별 구조
     subgraph "4️⃣ 대화 엔진 Core"
         D1[Session Manager<br/>세션 관리]
         D2[Dialogue Engine<br/>대화 수렴 로직]
@@ -230,49 +246,68 @@ question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_h
 
 ## 분석 파이프라인
 
-### 1. 세션 초기화 및 데이터 로딩
+### 1. 세션 초기화 및 데이터 로딩 (상품 선택 모드)
 
 ```mermaid
 flowchart TD
-    A[사용자 제품 URL 입력] --> B[URL 검증]
-    B --> C{해당 제품 리뷰 데이터<br/>이미 존재?}
+    A[사용자 상품 선택<br/>드롭다운] --> B[product_name 전송]
+    B --> C[reg_factor_v4.csv에서<br/>category 조회]
     
-    C -->|Yes| D[캐시된 리뷰 로드<br/>세션 저장소]
-    C -->|No| E[크롤링 트리거]
+    C --> D{Category 매핑<br/>earbuds→earphone 등}
+    D --> E[backend/data/review/<br/>해당 JSON 파일 검색]
     
-    E --> F[Selenium WebDriver 실행]
-    F --> G[리뷰 수집 & 세션 저장]
-    G --> D
+    E --> F{JSON 파일<br/>존재?}
+    F -->|Yes| G[리뷰 로드<br/>Array/Object 형식 자동 처리]
+    F -->|No| H[404 Error<br/>리뷰 파일 없음]
     
-    D --> H[DialogueSession 생성]
-    H --> I[Category 필터링]
-    I --> J[Factor Map 생성]
-    J --> K[세션 준비 완료]
+    G --> I[FactorAnalyzer로<br/>리뷰-Factor 매칭]
     
-    K --> L{메트릭 기록}
-    L -->|dialogue_sessions_total| M[Prometheus]
+    I --> J[aggregate_factors()<br/>Top 5 후회 요인 추출]
+    J --> K[DialogueSession 생성]
+    K --> L[Category 필터링]
+    L --> M[Factor Map 생성]
+    M --> N[세션 준비 완료]
     
-    style H fill:#e1f5dd
-    style L fill:#fce4ec
+    N --> O{메트릭 기록}
+    O -->|dialogue_sessions_total| P[Prometheus]
+    
+    style K fill:#e1f5dd
+    style O fill:#fce4ec
 ```
 
-**주요 로직** (`backend/pipeline/dialogue.py`):
+**주요 로직** (`backend/app/api/routes_chat.py`):
 
 ```python
-class DialogueSession:
-    def __init__(self, category, data_dir, reviews_df=None):
-        # 1. 데이터 로드
-        # - reviews_df: 세션 저장소에서 전달받은 리뷰 (운영)
-        # - None: CSV에서 로드 (테스트/개발)
-        self.reviews_df = reviews_df
-        
-        # 2. Factor/Question 파싱
-        all_factors = parse_factors(factors_df)
-        self.factors = [f for f in all_factors if f.category == category]
-        self.questions = parse_questions(questions_df)
-        
-        # 3. 메트릭 기록
-        dialogue_sessions_total.labels(category=category).inc()
+@router.post("/analyze-product")
+async def analyze_product(product_name: str):
+    # 1. Factor CSV에서 상품명으로 category 찾기
+    df = pd.read_csv(settings.FACTOR_CSV_PATH)
+    product_rows = df[df['product_name'] == product_name]
+    category = product_rows.iloc[0]['category']
+    
+    # 2. Category 매핑 (earbuds → earphone 등)
+    category_mapping = {
+        'earbuds': 'earphone',
+        'coffee_machine': 'coffee_machine',
+        'induction': 'induction',
+        # ... 10개 카테고리
+    }
+    file_category = category_mapping.get(category, category)
+    
+    # 3. JSON 파일 찾기 및 로드
+    review_dir = Path(settings.REVIEW_JSON_DIR)
+    json_files = list(review_dir.glob("*.json"))
+    target_file = next((f for f in json_files if file_category in f.name), None)
+    
+    # 4. FactorAnalyzer로 리뷰-Factor 매칭
+    analyzer = FactorAnalyzer(settings.FACTOR_CSV_PATH)
+    matched_reviews = []
+    for review in reviews:
+        factor_matches = analyzer.analyze_review(review['text'])
+        matched_reviews.append({
+            'review_id': review['review_id'],
+            'matched_factors': factor_matches
+        })
 ```
 
 ### 2. 대화 턴 처리 (Factor Convergence)
@@ -592,43 +627,67 @@ f"""
 
 ## 모니터링 계층
 
+> 📊 상세 문서: [MONITORING_ARCHITECTURE.md](MONITORING_ARCHITECTURE.md)
+
+### 아키텍처 개요
+
+ReviewLens는 **Prometheus + Grafana** 기반 관측성 스택을 사용하여 애플리케이션의 성능, 신뢰성, 사용자 경험을 실시간으로 추적합니다.
+
+**핵심 특징**:
+- ✅ 자동 메트릭 수집 (미들웨어 기반)
+- ✅ 최소 침투성 (비즈니스 로직 영향 없음)
+- ✅ Docker와 로컬 바이너리 모두 지원
+- ✅ 실시간 대시보드 (10-15초 간격)
+- ✅ 커스텀 메트릭 Registry 사용
+
 ### Metrics 수집 구조
 
 ```mermaid
 graph TB
-    subgraph "애플리케이션 Layer"
-        A1[FastAPI Middleware] -->|HTTP 메트릭| M1[Metrics Registry]
-        A2[DialogueSession] -->|대화 메트릭| M1
-        A3[Retrieval Pipeline] -->|성능 메트릭| M1
-        A4[LLM Client] -->|API 메트릭| M1
+    subgraph "Application Layer"
+        A1[FastAPI Server<br/>:8000]
+        A2[MetricsMiddleware<br/>자동 HTTP 추적]
+        A3[Dialogue Engine]
+        A4[LLM Clients<br/>Gemini/OpenAI/Claude]
+        
+        A2 -.-> A1
+        A1 --> A3
+        A3 --> A4
     end
     
-    subgraph "Metrics Registry"
-        M1 --> M2[Counter<br/>http_requests_total]
-        M1 --> M3[Histogram<br/>http_request_duration_seconds]
-        M1 --> M4[Histogram<br/>retrieval_duration_seconds]
-        M1 --> M5[Counter<br/>llm_calls_total]
-        M1 --> M6[Histogram<br/>evidence_count]
+    subgraph "Metrics Registry (backend/core/metrics.py)"
+        M1[HTTP Metrics<br/>Counter/Histogram]
+        M2[Dialogue Metrics<br/>Counter/Gauge]
+        M3[LLM Metrics<br/>Counter/Histogram]
+        M4[Pipeline Metrics<br/>Histogram]
+        M5[Error Metrics<br/>Counter]
+        
+        A2 --> M1
+        A3 --> M2
+        A4 --> M3
+        A3 --> M4
+        A1 & A3 & A4 --> M5
     end
     
-    subgraph "Prometheus"
-        P1[Scraper<br/>15초 간격]
-        P2[TSDB<br/>시계열 저장]
-        P3[PromQL Engine]
+    subgraph "Prometheus (:9090)"
+        P1[Scraper<br/>10-15초 간격]
+        P2[TSDB<br/>시계열 DB]
+        P3[PromQL Engine<br/>쿼리 엔진]
+        
+        M1 & M2 & M3 & M4 & M5 -->|/metrics endpoint| P1
+        P1 --> P2
+        P2 --> P3
     end
     
-    subgraph "Grafana"
-        G1[Dashboard<br/>12개 패널]
-        G2[Query Builder]
-        G3[Alerting]
+    subgraph "Grafana (:3001)"
+        G1[Dashboards<br/>3개 제공]
+        G2[Auto-provisioning<br/>데이터소스/대시보드]
+        G3[Alerting<br/>선택사항]
+        
+        P3 -->|PromQL queries| G1
+        G2 --> G1
+        G1 --> G3
     end
-    
-    M2 & M3 & M4 & M5 & M6 -->|/metrics| P1
-    P1 --> P2
-    P2 --> P3
-    P3 --> G2
-    G2 --> G1
-    G2 --> G3
     
     style M1 fill:#e1f5dd
     style P2 fill:#fff4e6
@@ -637,71 +696,248 @@ graph TB
 
 ### 주요 메트릭 정의
 
-```mermaid
-graph LR
-    subgraph "HTTP Metrics"
-        H1[http_requests_total<br/>Counter]
-        H2[http_request_duration_seconds<br/>Histogram]
-    end
-    
-    subgraph "Business Metrics"
-        B1[dialogue_sessions_total<br/>Counter]
-        B2[dialogue_turns_total<br/>Counter]
-        B3[dialogue_completions_total<br/>Counter]
-    end
-    
-    subgraph "Performance Metrics"
-        P1[retrieval_duration_seconds<br/>Histogram]
-        P2[scoring_duration_seconds<br/>Histogram]
-        P3[evidence_count<br/>Histogram]
-    end
-    
-    subgraph "LLM Metrics"
-        L1[llm_calls_total<br/>Counter]
-        L2[llm_duration_seconds<br/>Histogram]
-    end
-    
-    subgraph "Error Metrics"
-        E1[errors_total<br/>Counter]
-    end
-    
-    style B1 fill:#c8e6c9
-    style P1 fill:#fff9c4
-    style L1 fill:#bbdefb
-    style E1 fill:#ffcdd2
+#### 1. HTTP 메트릭 (자동 수집)
+
+**`http_requests_total`** (Counter)
+```python
+# 레이블: method, endpoint, status_code
+# 사용: 요청 수, RPS, 에러율 계산
+http_requests_total.labels(
+    method="POST",
+    endpoint="/api/chat/message",
+    status_code="200"
+).inc()
 ```
 
-### 계측 포인트
+**`http_request_duration_seconds`** (Histogram)
+```python
+# 레이블: method, endpoint
+# Buckets: 0.01s ~ 10.0s (8단계)
+# 사용: p50/p95/p99 latency 계산
+http_request_duration_seconds.labels(
+    method="POST",
+    endpoint="/api/chat/message"
+).observe(0.234)  # 234ms
+```
+
+#### 2. 대화 시스템 메트릭
 
 ```python
-# 1. HTTP 요청 (미들웨어)
-class MetricsMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        start = time.time()
-        response = await call_next(request)
-        duration = time.time() - start
-        
-        http_requests_total.labels(
-            method=request.method,
-            endpoint=request.url.path,
-            status_code=response.status_code
-        ).inc()
-        
-        http_request_duration_seconds.labels(...).observe(duration)
+# 세션 생성
+dialogue_sessions_total.labels(category='robot_cleaner').inc()
 
-# 2. 대화 단계
-dialogue_sessions_total.labels(category=category).inc()
-dialogue_turns_total.labels(category=category).inc()
+# 대화 턴
+dialogue_turns_total.labels(category='robot_cleaner').inc()
 
-# 3. 파이프라인 성능
+# 대화 완료
+dialogue_completions_total.labels(category='robot_cleaner').inc()
+
+# Evidence 수집
+evidence_count.labels(category='robot_cleaner').observe(15)
+active_evidence_gauge.labels(
+    category='robot_cleaner',
+    session_id='abc123'
+).set(15)
+```
+
+#### 3. LLM API 메트릭
+
+```python
+# API 호출
+llm_calls_total.labels(
+    provider='gemini',
+    status='success'  # success/error/fallback
+).inc()
+
+# 응답 시간
+with Timer(llm_duration_seconds, {'provider': 'gemini'}):
+    response = client.generate_content(prompt)
+
+# 토큰 사용량
+llm_tokens_total.labels(provider='gemini', type='prompt').inc(150)
+llm_tokens_total.labels(provider='gemini', type='completion').inc(500)
+```
+
+#### 4. 파이프라인 메트릭
+
+```python
+# Retrieval 성능
 with Timer(retrieval_duration_seconds, {'category': category}):
     evidence = retrieve_evidence_reviews(...)
 
-# 4. LLM 호출
-with Timer(llm_duration_seconds, {'provider': provider}):
-    summary = llm_client.generate_summary(...)
-llm_calls_total.labels(provider=provider, status='success').inc()
+# Scoring 성능
+with Timer(scoring_duration_seconds, {'category': category}):
+    scores = calculate_factor_scores(...)
 ```
+
+#### 5. 에러 추적
+
+```python
+# 에러 발생 시
+errors_total.labels(
+    error_type='llm_timeout',
+    component='llm_client'
+).inc()
+```
+
+### 메트릭 엔드포인트
+
+**구현** ([backend/app/api/routes_metrics.py](../backend/app/api/routes_metrics.py)):
+```python
+@router.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus 메트릭 엔드포인트"""
+    metrics_data = get_metrics()  # backend.core.metrics.get_metrics()
+    return Response(
+        content=metrics_data,
+        media_type="text/plain; version=0.0.4; charset=utf-8"
+    )
+```
+
+**출력 예시** (http://localhost:8000/metrics):
+```prometheus
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{endpoint="/api/chat/start",method="POST",status_code="200"} 15.0
+http_requests_total{endpoint="/api/chat/message",method="POST",status_code="200"} 47.0
+
+# HELP http_request_duration_seconds HTTP request latency in seconds
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{endpoint="/api/chat/message",method="POST",le="0.01"} 2.0
+http_request_duration_seconds_bucket{endpoint="/api/chat/message",method="POST",le="0.05"} 12.0
+...
+```
+
+### Prometheus 설정
+
+**로컬 개발** ([monitoring/prometheus.yml](../monitoring/prometheus.yml)):
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'reviewlens-backend'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['localhost:8000']
+```
+
+**Docker 환경** ([monitoring/prometheus/prometheus.yml](../monitoring/prometheus/prometheus.yml)):
+```yaml
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: 'reviewlens-api'
+    static_configs:
+      - targets: ['host.docker.internal:8000']  # Docker → 호스트
+```
+
+### Grafana 대시보드
+
+**제공 대시보드**:
+1. **reviewlens_dashboard.json** - 기본 성능 대시보드
+   - HTTP 요청 속도 (RPS)
+   - HTTP Latency (p50/p95/p99)
+   - 에러율 (4xx/5xx)
+   - 대화 세션/턴 추세
+   
+2. **reviewlens-demo-kr.json** - 데모 시나리오용
+   - 사용자 여정 추적
+   - 실시간 대화 플로우
+   
+3. **reviewlens-production-kr-v2.json** - 프로덕션 모니터링
+   - SLA 추적
+   - 알림 개요
+   - 리소스 사용량
+
+**자동 프로비저닝**:
+- 데이터소스: Prometheus 자동 연결
+- 대시보드: 시작 시 자동 로드
+- 설정: [monitoring/grafana/provisioning/](../monitoring/grafana/provisioning/)
+
+### 배포 옵션
+
+| 방식 | 명령어 | 용도 |
+|------|--------|------|
+| **로컬 바이너리** | `./scripts/start_monitoring.sh` | 개발 환경 (빠른 시작) |
+| **Docker Compose** | `docker-compose -f docker-compose.monitoring.yml up -d` | 스테이징/프로덕션 |
+
+**파일 구조**:
+```
+monitoring/
+├── prometheus.yml              # 로컬용
+├── prometheus/
+│   └── prometheus.yml         # Docker용
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/
+│   │   │   └── prometheus.yml # 자동 데이터소스 설정
+│   │   └── dashboards/
+│   │       └── dashboard.yml  # 대시보드 프로비저닝
+│   └── dashboards/
+│       ├── reviewlens_dashboard.json
+│       ├── reviewlens-demo-kr.json
+│       └── reviewlens-production-kr-v2.json
+scripts/
+├── start_monitoring.sh        # 로컬 시작 스크립트
+└── stop_monitoring.sh         # 로컬 종료 스크립트
+```
+
+### PromQL 쿼리 예시
+
+```promql
+# 초당 요청 수 (RPS)
+rate(http_requests_total[1m])
+
+# p95 Latency
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# 에러율
+sum(rate(http_requests_total{status_code=~"[45].."}[5m])) / 
+sum(rate(http_requests_total[5m])) * 100
+
+# 세션당 평균 턴 수
+sum(rate(dialogue_turns_total[1h])) / 
+sum(rate(dialogue_sessions_total[1h]))
+
+# LLM 토큰 사용량 (시간당)
+rate(llm_tokens_total[1h]) * 3600
+
+# Provider별 LLM p95 latency
+histogram_quantile(0.95, 
+  sum by (provider, le) (rate(llm_duration_seconds_bucket[5m]))
+)
+```
+
+### 성능 최적화
+
+**메트릭 카디널리티 관리**:
+```python
+# ❌ 나쁜 예: session_id를 레이블로 사용 (무한 증가)
+dialogue_turns_total.labels(session_id=session_id).inc()
+
+# ✅ 좋은 예: category만 레이블로
+dialogue_turns_total.labels(category=category).inc()
+logger.info(f"Turn recorded for session {session_id}")
+```
+
+**Histogram Bucket 최적화**:
+- HTTP 요청: `(0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0)`
+- LLM API: `(0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0)`
+
+**Retention 정책**:
+- 개발: 7-15일
+- 프로덕션: 30-90일
+- 장기 저장: Thanos, Cortex 등 활용
+
+### 접속 정보
+
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3001 (admin/admin)
+- **Metrics Endpoint**: http://localhost:8000/metrics
 
 ---
 
@@ -1048,17 +1284,266 @@ def normalize(text, lang='ko'):
 
 ---
 
-## 참고 문서
+## 세션 영속성 (Session Persistence)
 
-- [README.md](README.md) - 프로젝트 개요
-- [MONITORING.md](MONITORING.md) - 모니터링 상세 가이드
-- [DEPLOYMENT_MONITORING.md](DEPLOYMENT_MONITORING.md) - 배포 전략
-- [LLM_SETUP.md](LLM_SETUP.md) - LLM 설정 가이드
-- [SMARTSTORE_REVIEW_COLLECTION.md](SMARTSTORE_REVIEW_COLLECTION.md) - 크롤링 가이드
-- [ARCHITECTURE_OLD.md](ARCHITECTURE_OLD.md) - 이전 아키텍처 문서 (참고용)
+### 1. 아키텍처
+
+```mermaid
+graph TB
+    A[FastAPI 서버 시작] --> B[SessionStore.restore_all]
+    B --> C{out/sessions/*.json<br/>파일 존재?}
+    
+    C -->|Yes| D[세션 파일 로드]
+    C -->|No| E[빈 세션으로 시작]
+    
+    D --> F[DialogueSession 재생성]
+    F --> G[리뷰 데이터 복원]
+    G --> H[메타데이터 복원]
+    H --> I[세션 준비 완료]
+    
+    J[새 세션 생성] --> K[SessionStore._save_session]
+    K --> L[JSON 파일 저장<br/>out/sessions/UUID.json]
+    
+    M[세션 업데이트] --> K
+    
+    style D fill:#c8e6c9
+    style L fill:#fff9c4
+```
+
+### 2. 세션 파일 구조
+
+```json
+{
+  "session_id": "c6a10728-94dd-4241-8fb9-bf3cfd229ab4",
+  "category": "mattress",
+  "product_name": "지누스 그린티 메모리폼 매트리스",
+  "product_url": "https://brand.naver.com/zinus/products/3743902988",
+  "reviews": [...],
+  "created_at": "2026-01-15T23:26:29",
+  "updated_at": "2026-01-15T23:28:15"
+}
+```
+
+**참고**: LLM 설정(provider, model)은 서비스 레벨에서 환경 변수로 관리되며, 모든 세션이 동일한 설정을 사용합니다.
+
+### 3. 리뷰 캐싱
+
+```mermaid
+flowchart LR
+    A[리뷰 수집 요청] --> B{캐시 확인}
+    B -->|Hit| C[캐시된 데이터 반환<br/>즉시 응답]
+    B -->|Miss| D[크롤링 실행]
+    D --> E[세션 저장]
+    E --> F[캐시 업데이트]
+    F --> G[응답 반환]
+    
+    style C fill:#c8e6c9
+    style D fill:#ffcdd2
+```
+
+**캐시 키**: `{URL}|{max_reviews}|{sort_by_low_rating}`
+
+### 4. Term 변환 (6가지 형태소 규칙)
+
+사용자 친화적인 용어 표시를 위한 한글 형태소 변환:
+
+```python
+def _convert_term_for_display(term: str) -> str:
+    """형태소 변환 규칙"""
+    if term.endswith('프'):
+        return term[:-1] + '픔'      # 아프 → 아픔
+    elif term.endswith(('운', '른')):
+        return term[:-1] + '움'       # 무거운 → 무거움
+    elif term.endswith('워'):
+        return term[:-1] + '움'       # 무거워 → 무거움
+    elif term.endswith('어'):
+        return term[:-1] + '음'       # 길어 → 김
+    elif term.endswith('거'):
+        return term + '움'            # 뜨거 → 뜨거움
+    elif term.endswith('려'):
+        return term[:-1] + '림'       # 걸려 → 걸림
+    return term
+```
 
 ---
 
-**문서 버전**: 2.0  
-**최종 업데이트**: 2026-01-04  
+## API 엔드포인트
+
+### 1. 세션 관리
+
+#### POST /api/chat/start
+세션 시작 (더 이상 사용되지 않음, collect-reviews로 대체)
+
+**Request**:
+```json
+{
+  "category": "mattress",
+  "provider": "openai",
+  "model_name": "gpt-4o-mini"
+}
+```
+
+**Response**:
+```json
+{
+  "session_id": "uuid",
+  "message": "세션이 시작되었습니다"
+}
+```
+
+#### POST /api/chat/collect-reviews
+리뷰 수집 및 분석 (캐싱 지원)
+
+**Request**:
+```json
+{
+  "product_url": "https://brand.naver.com/...",
+  "max_reviews": 100,
+  "sort_by_low_rating": true,
+  "category": "mattress"  // 선택적
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "session_id": "uuid",
+  "product_name": "제품명",
+  "total_count": 100,
+  "suggested_factors": ["허리 통증", "과도한 꺼짐", ...],
+  "detected_category": "mattress",
+  "category_confidence": "high"
+}
+```
+
+#### POST /api/chat/reset-session
+세션 재분석 (대화만 초기화, 리뷰 데이터 유지)
+
+**Request**:
+```json
+{
+  "session_id": "uuid"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "대화가 초기화되었습니다"
+}
+```
+
+### 2. 대화 처리
+
+#### POST /api/chat/message
+메시지 전송 및 응답
+
+**Request**:
+```json
+{
+  "session_id": "uuid",
+  "message": "가끔 뻐근해요",
+  "selected_factor": "허리 통증"  // 선택적
+}
+```
+
+**Response**:
+```json
+{
+  "session_id": "uuid",
+  "bot_message": "너무 푹신해서 몸이 가라앉는 느낌이 불편하신가요?",
+  "is_final": false,
+  "has_analysis": false,
+  "options": ["매우 불편함", "보통", "괜찮음"],
+  "top_factors": [
+    {"factor_key": "back_pain", "score": 6.0}
+  ],
+  "related_reviews": {...}
+}
+```
+
+---
+
+## 대화 엔진 개선사항
+
+### 1. 카테고리별 Fallback 질문
+
+기존: 일반적인 질문 3개
+```python
+defaults = [
+    "구매 전에 가장 걱정되는 점은?",
+    "사용 환경은 어떤가요?",
+    "실망했던 경험이 있나요?"
+]
+```
+
+개선: 10개 카테고리별 맞춤 질문
+```python
+category_questions = {
+    'mattress': [
+        "평소 어떤 자세로 주로 주무시나요?",
+        "현재 매트리스에서 가장 불편한 점은?",
+        "지지력/푹신함 중 무엇이 중요한가요?"
+    ],
+    'chair': [...],
+    'earbuds': [...],
+    ...  # 총 10개 카테고리
+}
+```
+
+**지원 카테고리**:
+- mattress (매트리스)
+- chair (의자)
+- bedding_cleaner (침구청소기)
+- bedding_robot (침구로봇)
+- bookshelf (책장)
+- coffee_machine (커피머신)
+- desk (책상)
+- earbuds (이어폰)
+- humidifier (가습기)
+- induction (인덕션)
+
+### 2. Settings 통합
+
+모든 설정값을 `backend/app/core/settings.py`에서 중앙 관리:
+
+```python
+class Settings(BaseSettings):
+    # Dialogue 설정
+    DIALOGUE_JACCARD_THRESHOLD: float = 0.67
+    DIALOGUE_MIN_ANALYSIS_TURNS: int = 3
+    DIALOGUE_FOCUS_TURNS_THRESHOLD: int = 2
+    
+    # Evidence 설정
+    EVIDENCE_PER_FACTOR_MIN: int = 8
+    EVIDENCE_PER_FACTOR_MAX: int = 8
+    EVIDENCE_MAX_TOTAL: int = 15
+    
+    # CORS 설정
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000"
+    ]
+```
+
+---
+
+## 참고 문서
+
+- [README.md](../README.md) - 프로젝트 개요
+- [MONITORING_ARCHITECTURE.md](MONITORING_ARCHITECTURE.md) - 모니터링 아키텍처 및 배포 가이드
+- [LLM_SETUP.md](LLM_SETUP.md) - LLM 설정 가이드
+- [SMARTSTORE_REVIEW_COLLECTION.md](SMARTSTORE_REVIEW_COLLECTION.md) - 크롤링 가이드
+- [ARCHITECTURE_OLD.md](ARCHITECTURE_OLD.md) - 이전 아키텍처 문서 (참고용)
+- [DEV_ENV_SETUP.md](DEV_ENV_SETUP.md) - 개발 환경 설정
+- [CONTRIBUTING.md](CONTRIBUTING.md) - 기여 가이드
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) - 프로젝트 현황
+
+---
+
+**문서 버전**: 2.1  
+**최종 업데이트**: 2026-01-16  
 **작성자**: ReviewLens Team

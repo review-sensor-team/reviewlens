@@ -1,9 +1,9 @@
 <template>
-  <ChatBot />
+  <ReviewLens />
 </template>
 
 <script setup>
-import ChatBot from './components/ChatBot.vue'
+import ReviewLens from './components/ReviewLens.vue'
 </script>
 
 <style>

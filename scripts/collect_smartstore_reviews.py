@@ -492,12 +492,16 @@ class SmartStoreReviewCollector:
     def _set_sort_by_low_rating(self):
         """리뷰 정렬을 '평점 낮은순'으로 변경"""
         try:
-            # 정렬 버튼/드롭다운 찾기
+            # 먼저 정렬 버튼/드롭다운 찾기
             sort_selectors = [
                 "//button[contains(text(), '정렬')]",
-                "//select[contains(@class, 'sort')]",
                 "//button[contains(@class, 'sort')]",
-                "//a[contains(text(), '정렬')]",
+                "//button[contains(@class, 'Sort')]",
+                "//select[contains(@class, 'sort')]",
+                "//select[contains(@class, 'Sort')]",
+                "//div[contains(@class, 'sort')]//button",
+                "//div[contains(@class, 'Sort')]//button",
+                "//*[contains(text(), '추천순')]",  # 기본 정렬 옵션
             ]
             
             for selector in sort_selectors:
@@ -510,33 +514,103 @@ class SmartStoreReviewCollector:
                     sort_element.click()
                     time.sleep(1)
                     
-                    # '평점 낮은순' 옵션 찾기
+                    # '평점 낮은순' 옵션 찾기 - React 앱을 위한 패턴 추가
                     low_rating_selectors = [
+                        # href="#" 형태의 React 링크
+                        "//a[@href='#'][contains(text(), '평점 낮은순')]",
+                        "//a[@href='#'][contains(text(), '평점낮은순')]",
+                        "//a[@href='#']//span[contains(text(), '평점 낮은순')]",
+                        "//a[@href='#']//span[contains(text(), '평점낮은순')]",
+                        # 일반 패턴
                         "//button[contains(text(), '평점 낮은순')]",
+                        "//button[contains(text(), '평점낮은순')]",
                         "//a[contains(text(), '평점 낮은순')]",
+                        "//a[contains(text(), '평점낮은순')]",
                         "//li[contains(text(), '평점 낮은순')]",
+                        "//li[contains(text(), '평점낮은순')]",
+                        "//li//a[contains(text(), '평점 낮은순')]",
+                        "//li//a[contains(text(), '평점낮은순')]",
                         "//option[contains(text(), '평점 낮은순')]",
+                        "//option[contains(text(), '평점낮은순')]",
+                        "//span[contains(text(), '평점 낮은순')]",
+                        "//div[contains(text(), '평점 낮은순')]",
+                        "//*[text()='평점 낮은순']",
+                        "//*[text()='평점낮은순']",
+                        "//button[contains(@data-value, 'LOW')]",
+                        "//button[contains(@data-sort, 'rating_asc')]",
                     ]
                     
                     for low_selector in low_rating_selectors:
                         try:
                             low_rating_option = self.driver.find_element(By.XPATH, low_selector)
                             if low_rating_option.is_displayed():
+                                # React 앱을 위해 JavaScript click 사용
                                 self.driver.execute_script("arguments[0].click();", low_rating_option)
-                                print("✓ 정렬을 '평점 낮은순'으로 변경했습니다.")
-                                time.sleep(2)  # 정렬 후 리뷰 재로딩 대기
+                                print(f"✓ 정렬을 '평점 낮은순'으로 변경했습니다. (선택자: {low_selector})")
+                                time.sleep(2)
                                 return True
-                        except:
+                        except Exception as e:
                             continue
                     
                 except:
                     continue
+            
+            # 정렬 옵션을 찾지 못한 경우 페이지 소스에서 확인 및 모든 요소 디버깅
+            try:
+                page_source = self.driver.page_source
+                if '평점 낮은순' in page_source or '평점낮은순' in page_source:
+                    print("⚠️  '평점 낮은순' 텍스트는 존재하지만 클릭 가능한 요소를 찾지 못했습니다.")
+                    
+                    # 모든 '평점 낮은순' 포함 요소 찾기
+                    try:
+                        all_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), '평점') and contains(text(), '낮은순')]")
+                        print(f"📍 '평점 낮은순' 포함 요소 {len(all_elements)}개 발견:")
+                        for idx, elem in enumerate(all_elements[:5]):  # 최대 5개만
+                            try:
+                                print(f"  [{idx+1}] 태그: {elem.tag_name}, 표시여부: {elem.is_displayed()}, "
+                                      f"활성화: {elem.is_enabled()}, 텍스트: {elem.text[:50] if elem.text else ''}")
+                                print(f"      HTML: {elem.get_attribute('outerHTML')[:200]}")
+                                
+                                # 각 요소에 대해 클릭 시도
+                                if elem.is_displayed():
+                                    try:
+                                        # 방법 1: 일반 클릭
+                                        elem.click()
+                                        print(f"  ✓ 요소 [{idx+1}] 클릭 성공 (일반 클릭)")
+                                        time.sleep(2)
+                                        return True
+                                    except:
+                                        try:
+                                            # 방법 2: JavaScript 클릭
+                                            self.driver.execute_script("arguments[0].click();", elem)
+                                            print(f"  ✓ 요소 [{idx+1}] 클릭 성공 (JS 클릭)")
+                                            time.sleep(2)
+                                            return True
+                                        except:
+                                            try:
+                                                # 방법 3: 부모 요소 클릭
+                                                parent = elem.find_element(By.XPATH, "..")
+                                                parent.click()
+                                                print(f"  ✓ 요소 [{idx+1}] 부모 클릭 성공")
+                                                time.sleep(2)
+                                                return True
+                                            except Exception as e:
+                                                print(f"  ✗ 요소 [{idx+1}] 클릭 실패: {str(e)[:100]}")
+                            except Exception as e:
+                                print(f"  ✗ 요소 [{idx+1}] 처리 중 오류: {str(e)[:100]}")
+                    except Exception as e:
+                        print(f"⚠️  요소 검색 중 오류: {str(e)}")
+                else:
+                    print("⚠️  '평점 낮은순' 정렬 옵션이 페이지에 없습니다.")
+            except:
+                pass
             
             print("⚠️  '평점 낮은순' 정렬 옵션을 찾을 수 없습니다. 기본 정렬로 진행합니다.")
             return False
             
         except Exception as e:
             print(f"⚠️  정렬 변경 실패: {e}")
+            return False
             return False
     
     def _debug_review_structure(self):

@@ -8,36 +8,31 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from .pipeline.reg_store import load_csvs, parse_factors, Factor
-from .pipeline.ingest import dedupe_reviews
-from .pipeline.sensor import compute_review_factor_scores, select_top_factors_from_question
-from .pipeline.retrieval import retrieve_evidence_reviews
-from .pipeline.prompt_builder import write_llm_context, write_debug_report
+from .dialogue.reg_store import load_csvs, parse_factors, parse_questions, Factor, Question
+from .dialogue.ingest import dedupe_reviews
+from .dialogue.sensor import compute_review_factor_scores, select_top_factors_from_question
+from .dialogue.retrieval import retrieve_evidence_reviews
+from .dialogue.prompt_builder import write_llm_context, write_debug_report
 
 
 def pick_next_questions(
-    questions_df: pd.DataFrame,
+    questions: List[Question],
     top_factors: List[Tuple[str, float]],
     n: int = 2
 ) -> List[str]:
     """상위 요인에 대한 질문 선택"""
     qs: List[Tuple[int, str]] = []
     for factor_key, _ in top_factors:
-        matches = questions_df[
-            questions_df.apply(lambda r: str(r.get("factor_key") or "") == factor_key, axis=1)
-        ]
-        if matches is None or len(matches) == 0:
+        # factor_key로 매칭되는 질문 찾기
+        matches = [q for q in questions if q.factor_key == factor_key]
+        
+        if not matches:
             continue
 
-        def prio_val(r):
-            try:
-                return int(r.get("priority") or 999)
-            except Exception:
-                return 999
-
-        sorted_q = sorted(matches.to_dict(orient="records"), key=prio_val)
-        for rec in sorted_q:
-            qs.append((prio_val(rec), str(rec.get("question") or "")))
+        # question_id로 정렬 (낮은 숫자가 우선)
+        sorted_q = sorted(matches, key=lambda q: q.question_id)
+        for question in sorted_q:
+            qs.append((question.question_id, question.question_text))
 
     qs_sorted = sorted(qs, key=lambda x: x[0])
     picked = [q for _, q in qs_sorted][:n]
@@ -58,10 +53,11 @@ def main():
     deduped_df, total, removed = dedupe_reviews(reviews_df)
     print(f"Deduplication: {total} → {len(deduped_df)} (removed {removed})")
     
-    # Parse factors
+    # Parse factors and questions
     factors = parse_factors(factors_df)
+    questions = parse_questions(questions_df)
     factors_map = {f.factor_key: f for f in factors}
-    print(f"Parsed {len(factors)} factors")
+    print(f"Parsed {len(factors)} factors and {len(questions)} questions")
     
     # Score reviews
     scored_df, factor_counts = compute_review_factor_scores(deduped_df, factors)
@@ -77,7 +73,7 @@ def main():
     print(f"Selected {len(evidence)} evidence reviews")
     
     # Pick next questions
-    next_qs = pick_next_questions(questions_df, top_factors, n=2)
+    next_qs = pick_next_questions(questions, top_factors, n=2)
     print(f"Next questions: {next_qs}")
     
     # Write outputs

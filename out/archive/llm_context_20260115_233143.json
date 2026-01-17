@@ -1,0 +1,147 @@
+{
+  "top_factors": [
+    [
+      "back_pain",
+      6.0
+    ],
+    [
+      "sinking_deep",
+      0.75
+    ]
+  ],
+  "evidence_reviews": [
+    {
+      "review_id": "151934689275",
+      "rating": 1,
+      "excerpt": "허리아작나고싶으신분은쓰세요 엉덩이가 꺼져서 일어날때마다 뻘에서 해쳐나오는 기분임 2틀쓰고 당근행 맞는사람도 있음 다만 그게 내가아닐뿐",
+      "reason": [
+        "back_pain+anchor",
+        "back_pain+context"
+      ],
+      "factor": "back_pain",
+      "score": 7.0200000000000005,
+      "label": "MIX"
+    },
+    {
+      "review_id": "588144361480",
+      "rating": 1,
+      "excerpt": "푹푹 꺼져서 허리아픈 류의 매트리스네요 일어날때마다 갯벌 헤치고 나가는 느낌이에요 단단한 토퍼라도 깔아야겠는데 제 프레임이 높은편이라 토퍼까지 더하면 침대 오르내릴때마다 등반해야겠네요",
+      "reason": [
+        "back_pain+anchor",
+        "back_pain+context"
+      ],
+      "factor": "back_pain",
+      "score": 7.0200000000000005,
+      "label": "NEG"
+    },
+    {
+      "review_id": "119846871749",
+      "rating": 1,
+      "excerpt": "이 매트리스 쓰고 난후부터 아침에 일어날때마다 온몸이 부숴질듯 아파요^^ 허리 작살 나고 싶으신분들만 구입하시는걸 추천 드립니다 ^^ 매모리폼이고 지랄이고 매트리스가 한번 푹 꺼지면 복원 되는게 엄청 느리고 사람이 침대에 파묻혀 자는느낌 입니다 결국 내다 버리려고 꺼내놨습니다 ^^ 16",
+      "reason": [
+        "back_pain+anchor",
+        "back_pain+context"
+      ],
+      "factor": "back_pain",
+      "score": 7.0200000000000005,
+      "label": "MIX"
+    },
+    {
+      "review_id": "28738356335",
+      "rating": 1,
+      "excerpt": "너무 푹 꺼져서 잘 때 깨기도 하고 자고 일어나면 허리가 아파서 적응이 안될 정도..",
+      "reason": [
+        "back_pain+anchor",
+        "back_pain+context"
+      ],
+      "factor": "back_pain",
+      "score": 7.0200000000000005,
+      "label": "NEG"
+    },
+    {
+      "review_id": "1022788322530",
+      "rating": 1,
+      "excerpt": "허리가 좋지않아 하드메트리스를 찾던중 리뷰가 좋아서 구입했는데.. 누우면 밑으로 쑥 꺼져서 패드랑 몸이랑 따로 따로네요ㅜ 허리가 좋지 않거나 꺼지는 매트리스를 좋아하지 않으면 많이 불편하네요 조만간 다시 구매 예정입니다 ㅜ",
+      "reason": [
+        "back_pain+anchor"
+      ],
+      "factor": "back_pain",
+      "score": 5.4,
+      "label": "POS"
+    },
+    {
+      "review_id": "250890154203",
+      "rating": 1,
+      "excerpt": "냄새 ㅈ됨;;; 진짜 몇일동안 냄새 안빠지고 머리 ㅈㄴ아프고 심지어 냄새가 독해서 맵기까지도한거같음 ㅋㅋ 하 버릴수도없고 짜증난다",
+      "reason": [
+        "back_pain+anchor"
+      ],
+      "factor": "back_pain",
+      "score": 5.4,
+      "label": "NEG"
+    },
+    {
+      "review_id": "492135377494",
+      "rating": 2,
+      "excerpt": "너무 푹신해서 허리가 아프네요.",
+      "reason": [
+        "sinking_deep+anchor",
+        "sinking_deep+context"
+      ],
+      "factor": "sinking_deep",
+      "score": 5.2,
+      "label": "POS"
+    },
+    {
+      "review_id": "337424541492",
+      "rating": 2,
+      "excerpt": "여전히 허리쪽이 너무 꺼져서 불편하네요 두달정도 써본 결과 적응이 안되는걸보니 원래 쓰던 매트리스를 써야겠어요...",
+      "reason": [
+        "sinking_deep+anchor",
+        "sinking_deep+context"
+      ],
+      "factor": "sinking_deep",
+      "score": 5.2,
+      "label": "MIX"
+    },
+    {
+      "review_id": "797518407999",
+      "rating": 2,
+      "excerpt": "유튜브에서 평이 좋아서 더 알아보지도 않고 바로 샀는데 엄청 후회해요ㅠㅠ 너무 푹신해서 몸을 잡아주는 느낌이 없어 이상하다 싶었는데 허리가 안좋아져서 물리치료다니고 있어요..",
+      "reason": [
+        "sinking_deep+anchor",
+        "sinking_deep+context"
+      ],
+      "factor": "sinking_deep",
+      "score": 5.2,
+      "label": "NEG"
+    },
+    {
+      "review_id": "259246669045",
+      "rating": 2,
+      "excerpt": "계속 옆으로 누워서 자다가 오늘 잠깐 낮잠을 잤는데 똑바로누워서 잤거든요 지금 허리가 아파서 움직이질 못하고 있어요... 전 스프링 매트가 맞는 것 같아요ㅠㅠ 롤팩 매트리스로 말아서 배송되는 푹신한 제품이기 때문에, 허리가 안좋고 불편하시다면 추천하지 않는다고 하더라구요.. 푹신한 느낌",
+      "reason": [
+        "sinking_deep+anchor",
+        "sinking_deep+context"
+      ],
+      "factor": "sinking_deep",
+      "score": 5.2,
+      "label": "MIX"
+    },
+    {
+      "review_id": "915689696560",
+      "rating": 1,
+      "excerpt": "싸다고 사기에는 너무 푹신하고 별로네요 이 모델이 제일 많이 팔리는것 같은데 좋아서 팔리는것 보다는 싸서…팔리는것 같아요 조금 쓰다가 다른 매트리스 사려구요 편안한 매트리스 찾는분들에게는 비추입니다~",
+      "reason": [
+        "sinking_deep+anchor"
+      ],
+      "factor": "sinking_deep",
+      "score": 4.5,
+      "label": "NEG"
+    }
+  ],
+  "total_turns": 3,
+  "category_name": "mattress",
+  "product_name": "지누스 그린티 메모리폼 매트리스 (20cm/슈퍼싱글)",
+  "timestamp": "2026-01-15T23:31:43.719864"
+}

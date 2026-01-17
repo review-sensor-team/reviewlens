@@ -1,0 +1,21 @@
+{
+  "top_factors": [
+    [
+      "crema_quality",
+      29.25
+    ],
+    [
+      "price_regret",
+      27.540000000000003
+    ],
+    [
+      "noise_loud",
+      23.364000000000004
+    ]
+  ],
+  "evidence_reviews": [],
+  "total_turns": 3,
+  "category_name": "coffee_machine",
+  "product_name": "네스프레소 버츄오플러스",
+  "timestamp": "2026-01-17T05:04:02.285584"
+}

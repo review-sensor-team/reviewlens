@@ -1,5 +1,7 @@
-# ReviewLens
+# ReviewLens V2
 ### 후회를 줄이기 위한 대화형 리뷰 분석 챗봇
+
+> **V2 업데이트 (2026-01-17)**: Clean Architecture 적용, 3-5턴 대화 플로우 완성
 
 ---
 
@@ -7,6 +9,27 @@
 **ReviewLens는 리뷰를 요약하지 않는다.**  
 대신, 리뷰 속 *후회 요인(Regret Factor)*을 기준으로  
 **사용자와 3~5턴 대화를 통해 판단에 필요한 근거만 추출**한다.
+
+---
+
+## 주요 변경사항 (V2)
+
+### ✅ Clean Architecture 적용
+- **Domain Layer**: 비즈니스 로직 (review, dialogue, reg)
+- **Infrastructure Layer**: 외부 연동 (observability, session)
+- **API Layer**: REST 엔드포인트 (v2)
+- **332KB 중복 코드 제거**: legacy 폴더로 이동
+
+### ✅ 3-5턴 대화 플로우
+- 질문별 question_id 추적
+- 중복 질문 자동 필터링 (텍스트 기반)
+- Fallback 질문 시스템 (카테고리별 10개)
+- LLM 분석 통합 (GPT-4o-mini)
+
+### ✅ API 구조 개선
+- `/api/v2/reviews/*` - V2 Clean Architecture 엔드포인트
+- 세션 기반 상태 관리 (in-memory cache)
+- 증거 리뷰 추출 최적화
 
 ---
 
@@ -46,7 +69,11 @@
 ## 데이터 파이프라인 (요약)
 
 ```
-리뷰 CSV
+상품 선택 (reg_factor_v4.csv)
+  ↓
+리뷰 JSON 로드 (미리 수집된 파일)
+  ↓
+Factor 매칭 (FactorAnalyzer)
   ↓
 정규화 · 중복 제거
   ↓
@@ -93,40 +120,60 @@ LLM 호출 직전 Context 생성
 
 ### ✅ 구현 완료 (MVP)
 
-#### Backend Pipeline (Modular Architecture)
+#### Backend Architecture (Clean Architecture - V2)
 ```
 backend/
-├── pipeline/
-│   ├── ingest.py          # 리뷰 정규화 및 중복 제거
-│   ├── reg_store.py       # REG Factor/Question CSV 로딩
-│   │                      # Factor: category, display_name 포함
-│   ├── sensor.py          # Factor scoring & review classification (POS/NEG/MIX/NEU)
-│   ├── retrieval.py       # Evidence review selection
-│   ├── dialogue.py        # 3-5 turn conversation engine
-│   │                      # - dialogue_history 추적
-│   │                      # - calculation_info 생성 (프론트엔드용)
-│   │                      # - LLM 프롬프트 생성
-│   │                      # - 타임스탬프 기반 파일 저장
-│   └── prompt_builder.py  # LLM context JSON generation
-├── app/
-│   ├── main.py           # FastAPI application
+├── app/                      # Application Layer
+│   ├── main.py              # FastAPI app (V2 only)
+│   ├── core/
+│   │   ├── settings.py      # 환경 설정
+│   │   └── logging.py       # 로깅 설정
 │   ├── api/
-│   │   └── routes_chat.py  # Chat session API endpoints
-│   │       # POST /api/chat/start - 세션 시작
-│   │       # POST /api/chat/message - 메시지 전송
-│   ├── services/
-│   │   └── session_store.py  # Session management (in-memory)
-│   └── schemas/          # Request/Response models
+│   │   └── routers/
+│   │       ├── health.py    # Health check
+│   │       └── review.py    # V2 리뷰 분석 API
+│   │           # POST /api/v2/reviews/analyze-product - 상품 분석 시작
+│   │           # POST /api/v2/reviews/answer-question - 질문 답변
+│   │           # GET  /api/v2/reviews/factor-reviews - Factor별 리뷰
+│   │           # GET  /api/v2/reviews/products - 상품 목록
+│   │           # GET  /api/v2/reviews/config - 앱 설정
+│   ├── domain/              # Domain Layer (비즈니스 로직)
+│   │   ├── dialogue/
+│   │   │   └── session.py   # 3-5턴 대화 엔진
+│   │   ├── reg/
+│   │   │   ├── store.py     # Factor/Question CSV 로딩
+│   │   │   └── matching.py  # 질문-팩터 매칭
+│   │   └── review/
+│   │       ├── normalize.py # 리뷰 정규화
+│   │       ├── scoring.py   # Factor 점수 계산
+│   │       └── retrieval.py # 증거 리뷰 추출
+│   ├── infra/               # Infrastructure Layer
+│   │   ├── observability/
+│   │   │   └── metrics.py   # Prometheus 메트릭
+│   │   └── session/
+│   │       └── store.py     # 세션 저장소
+│   └── services/            # Application Services
+│       └── review_loader.py # 리뷰 파일 로딩
+├── llm/                     # LLM 통합 (독립 모듈)
+│   ├── llm_factory.py
+│   ├── llm_openai.py        # GPT-4o-mini
+│   ├── llm_claude.py
+│   └── llm_gemini.py
 ├── data/
 │   ├── factor/
-│   │   ├── reg_factor.csv    # category, display_name 포함
-│   │   └── reg_question.csv
+│   │   └── reg_factor_v4.csv    # 10개 상품, 100개 factors
+│   ├── question/
+│   │   └── reg_question_v6.csv  # 100개 질문
 │   └── review/
-│       └── review_sample.csv
-├── out/                  # 생성 파일 디렉터리
-│   ├── llm_context_demo.{timestamp}.json  # LLM API용 (calculation_info 제외)
-│   └── prompt_demo.{timestamp}.txt        # LLM 프롬프트
-└── regret_bot.py         # CLI tool for testing
+│       └── reviews_*.json       # 사전 수집된 리뷰
+├── legacy/                  # V1 레거시 코드 (332KB)
+│   ├── dialogue_old/
+│   ├── core_old/
+│   ├── collector_old/
+│   └── session_old/
+└── out/                     # LLM 컨텍스트 출력
+    ├── llm_context_*.json
+    └── llm_prompt_*.txt
 ```
 
 #### Frontend (Vue.js + Vite)
@@ -134,13 +181,15 @@ backend/
 frontend/
 ├── src/
 │   ├── components/
-│   │   └── ChatBot.vue       # 챗봇 UI 컴포넌트
-│   │       # - 대화 메시지 표시
-│   │       # - 후회 요인 뱃지 실시간 표시
-│   │       # - 분석 결과 섹션 (계산 공식 포함)
-│   │       # - 모바일 반응형 디자인
-│   ├── api.js               # API 호출 wrapper
-│   ├── config.js            # API 베이스 URL
+│   │   └── ReviewLens.vue    # V2 리뷰 분석 UI
+│   │       # - 3-5턴 대화 플로우
+│   │       # - 질문 선택지 표시
+│   │       # - 증거 리뷰 표시
+│   │       # - LLM 분석 결과 (Markdown)
+│   │       # - 모바일 반응형
+│   ├── api/
+│   │   └── chat.js          # V2 API 호출
+│   ├── config.js
 │   └── main.js
 ├── index.html
 ├── package.json
@@ -148,11 +197,26 @@ frontend/
 ```
 
 **주요 기능:**
+- ✅ **상품 선택 모드**
+  - 10개 카테고리 제품 (reg_factor_v4.csv)
+  - 카테고리별 factor 자동 필터링
+- ✅ **3-5턴 대화 플로우**
+  - 질문-답변 추적 (question_id 기반)
+  - 중복 질문 자동 스킵
+  - Fallback 질문 지원
+- ✅ **증거 기반 분석**
+  - Factor별 리뷰 추출
+  - POS/NEG/MIX 라벨링
+  - Anchor term 매칭
+  - 미리 수집된 JSON 파일에서 리뷰 로드
 - ✅ 3-5턴 대화형 UI
 - ✅ 실시간 후회 요인 뱃지 표시
 - ✅ 분석 완료 시 계산 공식 및 누적 점수 표시
 - ✅ 모바일/태블릿 반응형 디자인
 - ✅ 대화 히스토리 유지 (스크롤 가능)
+- ✅ 세션 재분석 ("상품 재분석" 버튼)
+- ✅ 분석 초기화 ("분석 초기화" 버튼)
+- ✅ Category 자동 매핑 (CSV category → JSON filename)
 
 #### Test Suite
 - ✅ **tests/test_demo_scenario.py**: 3-5 turn dialogue pytest PASSED
@@ -160,13 +224,14 @@ frontend/
 - 대화형 시나리오 검증 완료
 
 ### 🚧 진행 중
-- LLM API 통합 (OpenAI/Claude)
-- 데이터베이스 연동 (Redis/PostgreSQL)
+- UI/UX 디자인 적용
+- LLM API 통합
 
 ### 📋 계획 중
-- LLM Integration (OpenAI/Claude API)
-- Production deployment
-- Database persistence (PostgreSQL/Redis)
+- 팩터와 질문 데이터 자동 생성(백그라운드 잡)
+- LLM 프롬프트 최적화
+- 벡터 기반 후회 리뷰 추출
+- 멀티 카테고리 확장
 
 ---
 
@@ -210,19 +275,51 @@ npm run dev
 # http://localhost:5173
 ```
 
+### 6. 모니터링 시작 (선택사항)
+```bash
+# Docker로 Prometheus + Grafana 시작
+docker-compose -f docker-compose.monitoring.yml up -d
+
+# 또는 로컬 바이너리로 시작
+./scripts/start_monitoring.sh
+
+# 접속:
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3001 (admin/admin)
+# - Metrics: http://localhost:8000/metrics
+```
+
+> 📊 모니터링 상세 가이드: [MONITORING_ARCHITECTURE.md](docs/MONITORING_ARCHITECTURE.md)
+
 ---
 
 ## 현재 구현 범위 (MVP)
-- ✅ 리뷰 CSV 입력 및 정규화
+- ✅ **상품 선택 모드** (URL 크롤링 → 상품 선택으로 전환)
+  - reg_factor_v4.csv 기반 상품 목록 (10개 제품, 10개 카테고리)
+  - Category 매핑 (earbuds→earphone, coffee_machine, induction 등)
+  - FactorAnalyzer를 통한 리뷰-Factor 매칭
+  - JSON 파일 자동 로드 (backend/data/review/*.json)
+- ✅ 리뷰 정규화 및 factor 매칭
 - ✅ REG 기반 factor 스코어링 (category, display_name 포함)
 - ✅ POS / NEG / MIX / NEU 리뷰 분류 및 라벨링
 - ✅ 3~5턴 대화 기반 factor 수렴
+- ✅ 카테고리별 맞춤 fallback 질문 (10개 카테고리)
 - ✅ 대화 히스토리 추적
 - ✅ LLM API용 컨텍스트 (JSON) 생성
 - ✅ LLM 프롬프트 (TXT) 자동 생성
 - ✅ 타임스탬프 기반 파일 저장
 - ✅ Safety rules 포함
 - ✅ Vue.js 챗봇 UI (모바일 반응형)
+- ✅ **세션 영속성 (JSON 파일 기반)**
+  - 서버 재시작 후에도 세션 복원
+  - 리뷰 캐싱으로 빠른 재분석
+  - Term 변환 (6가지 한글 형태소 규칙)
+- ✅ **Prometheus + Grafana 모니터링 스택**
+  - HTTP 요청 메트릭 (latency, throughput, error rate)
+  - 대화 세션/턴 추적
+  - LLM API 성능 모니터링
+  - 파이프라인 단계별 latency 측정
+- ✅ **CORS 다중 포트 지원** (5173, 5174, 3000)
 
 ---
 

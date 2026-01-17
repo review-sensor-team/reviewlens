@@ -3,8 +3,21 @@ __pycache__/
 *.py[cod]
 *.pyo
 .venv/
+venv/
+env/
+
+# Environment variables (민감한 정보)
 .env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
 mydevelopment.md
+
+# API Keys & Credentials
+config/secrets.yaml
+config/credentials.json
 
 # Node
 node_modules/
@@ -13,6 +26,9 @@ node_modules/
 # Editor
 .vscode/
 .DS_Store
+*.swp
+*.swo
+*~
 
 # Output directories
 out/*.json
@@ -20,7 +36,48 @@ out/*.txt
 out/*.md
 out_test/
 
+# Logs
+logs/*.log
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
 # Temp/Cache
 .pytest_cache/
 .playwright_profile/
 *.egg-info/
+.ipynb_checkpoints/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Monitoring data
+monitoring/bin/
+monitoring/data/
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+*.iml
+.vscode/settings.json
+.vscode/launch.json
+
+# zip files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.7zout/

@@ -2,8 +2,18 @@
 <template>
   <div class="chat-container">
     <div class="chat-header">
-      <h1>💬 ReviewLens</h1>
-      <p>후회를 줄이는 대화형 리뷰 분석</p>
+      <img src="/images/ic_main.png" alt="ReviewLens Logo" class="logo" />
+      <div>안녕하세요!<br/>후회 없는 구매를 위한 리뷰 분석 서비스<br/>ReviewLens입니다.</div>
+    </div>
+
+    <!-- 리뷰 수집 중 오버레이 -->
+    <div v-if="isCollectingReviews" class="collecting-overlay">
+      <div class="collecting-animation">
+        <div class="spinner"></div>
+        <h3>🔍 리뷰 수집 중...</h3>
+        <p>별점 낮은 리뷰들을 꼼꼼히 모으고 있어요</p>
+        <p class="collecting-subtext">최대 2분 정도 소요될 수 있습니다</p>
+      </div>
     </div>
 
     <div class="chat-messages" ref="messagesContainer">
@@ -14,14 +24,79 @@
         :class="['message', msg.role]"
       >
         <div class="message-content">
-          <div class="message-text">{{ msg.text }}</div>
+          <!-- 질문 번호 표시 (봇 메시지 && 질문 있을 때) -->
+          <div v-if="msg.role === 'bot' && msg.questionId" class="question-number">
+            💬 질문 {{ msg.questionId }}
+          </div>
 
-          <!-- 요인 뱃지 표시 (봇 메시지에만) -->
+          <!-- 관련 리뷰 표시 (구조화된 형식) -->
+          <div v-if="msg.role === 'bot' && msg.relatedReviews" class="related-reviews-section">
+            <div v-for="(reviewInfo, factorKey) in msg.relatedReviews" :key="factorKey">
+              <div class="reviews-header">
+                <span class="reviews-count">{{ reviewInfo.display_name || factorKey }}에 대한 관련 댓글이 {{ reviewInfo.count }}건 있네요 💬</span>
+              </div>
+              <div class="reviews-list">
+                <div 
+                  v-for="(example, idx) in reviewInfo.examples.slice(0, 5)" 
+                  :key="idx"
+                  class="review-item"
+                >
+                  <div class="review-rating">⭐ {{ example.rating }}점</div>
+                  <div class="review-text">
+                    {{ example.sentences.join(' ').length > 200 ? example.sentences.join(' ').substring(0, 200) + '...' : example.sentences.join(' ') }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 일반 메시지 또는 질문 텍스트 -->
+          <div v-if="msg.questionText" class="question-text">{{ msg.questionText }}</div>
+          <div v-else-if="!msg.relatedReviews" class="message-text" v-html="formatMessageText(msg.text)"></div>
+
+          <!-- 선택지 버튼 (single_choice 타입) -->
+          <div
+            v-if="msg.role === 'bot' && msg.choices && msg.choices.length > 0 && !msg.answered"
+            class="choices"
+          >
+            <div class="choices-hint">💡 아래 버튼을 클릭하거나 직접 입력하세요</div>
+            <button
+              v-for="(choice, idx) in msg.choices"
+              :key="idx"
+              @click="handleChoiceClick(choice, index)"
+              class="choice-button"
+              :disabled="isLoading || isCollectingReviews"
+            >
+              {{ choice }}
+            </button>
+          </div>
+
+          <!-- 카테고리 선택 버튼 -->
+          <div
+            v-if="msg.role === 'bot' && msg.categories && msg.categories.length > 0"
+            class="category-selection"
+          >
+            <div class="categories-grid">
+              <button
+                v-for="(category, idx) in msg.categories"
+                :key="idx"
+                @click="handleCategorySelect(category.key, msg.productUrl)"
+                class="category-button"
+                :class="{ 'suggested': category.key === msg.detectedCategory }"
+                :disabled="isLoading || isCollectingReviews"
+              >
+                {{ category.name }}
+                <span v-if="category.key === msg.detectedCategory" class="suggested-badge">추천</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 요인 뱃지 표시 (개발 참고용) -->
           <div
             v-if="msg.role === 'bot' && msg.factors && msg.factors.length > 0"
             class="factors"
           >
-            <div class="factors-label">🎯 주요 후회 요인:</div>
+            <div class="factors-label">🔍 감지된 후회 요인 (개발용):</div>
             <div class="factor-badges">
               <span
                 v-for="(factor, idx) in msg.factors"
@@ -88,6 +163,12 @@
       </div>
 
       <div class="result-summary">
+        <!-- LLM 생성 요약 표시 -->
+        <div v-if="finalResult.llm_context?.llm_summary" class="llm-summary">
+          <h4>💡 AI 분석 요약</h4>
+          <div class="summary-content" v-html="formatSummary(finalResult.llm_context.llm_summary)"></div>
+        </div>
+
         <p><strong>주요 후회 요인:</strong></p>
         <div class="factor-list">
           <div
@@ -129,18 +210,32 @@
       </div>
     </div>
 
+    <!-- 다른 상품 분석 버튼 (항상 표시, 리뷰 수집 전에는 비활성화) -->
+    <div v-if="!finalResult" class="reset-action">
+      <button 
+        v-if="reviewsCollected && messages.length > 2" 
+        class="reset-conversation-button" 
+        @click="resetConversation"
+      >
+        🔄 대화 내용 초기화
+      </button>
+      <button class="new-analysis-button" @click="resetSession" :disabled="!reviewsCollected">
+        🆕 새로운 리뷰를 분석할래요
+      </button>
+    </div>
+
     <!-- 입력 영역 -->
     <div v-if="!finalResult" class="chat-input">
       <input
         v-model="userInput"
-        @keyup.enter="sendUserMessage"
-        :disabled="isLoading || !sessionId"
-        placeholder="궁금한 점을 입력하세요..."
+        @keyup.enter="handleUserInput"
+        :disabled="isLoading || isCollectingReviews"
+        :placeholder="getInputPlaceholder()"
         class="input-field"
       />
       <button
-        @click="sendUserMessage"
-        :disabled="isLoading || !userInput.trim() || !sessionId"
+        @click="handleUserInput"
+        :disabled="isLoading || !userInput.trim() || isCollectingReviews"
         class="send-button"
       >
         전송
@@ -151,7 +246,8 @@
 
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue'
-import { startChatSession, sendMessage } from '../api'
+import { startChatSession, sendMessage, collectReviews } from '../api'
+import axios from 'axios'
 
 // 상태 관리
 const sessionId = ref(null)
@@ -160,6 +256,155 @@ const userInput = ref('')
 const isLoading = ref(false)
 const finalResult = ref(null)
 const messagesContainer = ref(null)
+
+// 리뷰 수집 관련 상태
+const isCollectingReviews = ref(false)
+const reviewsCollected = ref(false)
+const collectedReviewCount = ref(0)
+const waitingForUrl = ref(true) // URL 대기 상태
+const lastProductUrl = ref('') // 마지막 시도한 URL
+
+// 현재 카테고리 (리뷰 수집 시 감지)
+const currentCategory = ref(null)
+
+// 수집된 리뷰 저장 (재사용용)
+const cachedReviews = ref(null)
+
+// Markdown 볼드 변환 함수
+const formatMessageText = (text) => {
+  if (!text) return ''
+  return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+}
+
+// LLM 요약 포맷팅 (줄바꿈 처리)
+const formatSummary = (text) => {
+  if (!text) return ''
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>')
+}
+
+// 세션 데이터 저장
+const saveSessionData = () => {
+  const sessionData = {
+    sessionId: sessionId.value,
+    messages: messages.value,
+    reviewsCollected: reviewsCollected.value,
+    collectedReviewCount: collectedReviewCount.value,
+    waitingForUrl: waitingForUrl.value,
+    lastProductUrl: lastProductUrl.value,
+    currentCategory: currentCategory.value,
+    cachedReviews: cachedReviews.value,
+    finalResult: finalResult.value
+  }
+  localStorage.setItem('reviewlens_session', JSON.stringify(sessionData))
+}
+
+// 세션 데이터 복원
+const loadSessionData = () => {
+  const saved = localStorage.getItem('reviewlens_session')
+  if (saved) {
+    try {
+      const sessionData = JSON.parse(saved)
+      sessionId.value = sessionData.sessionId
+      messages.value = sessionData.messages || []
+      reviewsCollected.value = sessionData.reviewsCollected || false
+      collectedReviewCount.value = sessionData.collectedReviewCount || 0
+      waitingForUrl.value = sessionData.waitingForUrl !== undefined ? sessionData.waitingForUrl : true
+      lastProductUrl.value = sessionData.lastProductUrl || ''
+      currentCategory.value = sessionData.currentCategory || null
+      cachedReviews.value = sessionData.cachedReviews || null
+      finalResult.value = sessionData.finalResult || null
+      return true
+    } catch (e) {
+      console.error('세션 복원 실패:', e)
+      return false
+    }
+  }
+  return false
+}
+
+// 대화 내용만 초기화 (같은 상품으로 다시 시작)
+const resetConversation = async () => {
+  if (!cachedReviews.value || !lastProductUrl.value) {
+    alert('리뷰 데이터가 없습니다.')
+    return
+  }
+
+  if (!confirm('대화 내용을 초기화하고 처음부터 다시 시작하시겠습니까?')) {
+    return
+  }
+
+  try {
+    isLoading.value = true
+
+    // 백엔드에 같은 리뷰로 새 세션 시작
+    const response = await startChatSession(
+      cachedReviews.value,
+      currentCategory.value || 'furniture_chair'
+    )
+
+    // 새 세션 ID 저장
+    sessionId.value = response.session_id
+    
+    // 메시지만 초기화
+    messages.value = []
+    finalResult.value = null
+    userInput.value = ''
+
+    // 안내 메시지
+    messages.value.push({
+      role: 'bot',
+      text: `대화 내용을 초기화했어요! 🔄\n\n같은 상품(리뷰 ${collectedReviewCount.value}건)으로 처음부터 다시 시작할게요.\n궁금한 점을 물어보세요!`
+    })
+
+    // 세션 데이터 저장
+    saveSessionData()
+    scrollToBottom()
+  } catch (error) {
+    console.error('대화 초기화 오류:', error)
+    alert('대화 초기화에 실패했습니다: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 세션 초기화
+const resetSession = () => {
+  if (confirm('세션을 초기화하고 새로운 상품 분석을 시작하시겠습니까?')) {
+    localStorage.removeItem('reviewlens_session')
+    sessionId.value = null
+    messages.value = []
+    reviewsCollected.value = false
+    collectedReviewCount.value = 0
+    waitingForUrl.value = true
+    lastProductUrl.value = ''
+    currentCategory.value = null
+    cachedReviews.value = null
+    finalResult.value = null
+    showWelcomeMessage()
+  }
+}
+
+// 카테고리 선택 핸들러
+const handleCategorySelect = async (categoryKey, productUrl) => {
+  // 사용자 선택 메시지 추가
+  const categoryName = messages.value[messages.value.length - 1].categories?.find(c => c.key === categoryKey)?.name || categoryKey
+  messages.value.push({
+    role: 'user',
+    text: `${categoryName} 선택`
+  })
+  
+  // 카테고리 선택 완료 메시지
+  messages.value.push({
+    role: 'bot',
+    text: `좋아요! ${categoryName} 카테고리로 분석을 시작할게요 ✨`
+  })
+  scrollToBottom()
+
+  // 선택한 카테고리로 리뷰 재수집 (백엔드가 세션까지 생성)
+  await collectProductReviews(productUrl, categoryKey)
+}
 
 /**
  * ✅ 백엔드 응답이 object 형태([{factor_key, score}])든
@@ -179,29 +424,193 @@ const normalizedTopFactors = computed(() => {
   })
 })
 
-// 세션 시작
-const initSession = async () => {
-  try {
-    isLoading.value = true
+// URL 패턴 감지
+const isValidUrl = (text) => {
+  const urlPattern = /(https?:\/\/[^\s]+)/g
+  return urlPattern.test(text)
+}
 
-    // ✅ 데모 타겟 카테고리로 변경
-    const response = await startChatSession('appliance_heated_humidifier')
-    sessionId.value = response.session_id
+// 사용자 입력 처리
+const handleUserInput = async () => {
+  if (!userInput.value.trim() || isLoading.value || isCollectingReviews.value) return
 
-    // 초기 메시지 추가
-    messages.value.push({
-      role: 'bot',
-      text: response.message || '안녕하세요! 무엇이 궁금하신가요?'
-    })
-  } catch (error) {
-    console.error('세션 시작 오류:', error)
-    messages.value.push({
-      role: 'bot',
-      text: '⚠️ 서버 연결에 실패했습니다. 백엔드 서버가 실행 중인지 확인해주세요.'
-    })
-  } finally {
-    isLoading.value = false
+  const message = userInput.value.trim()
+
+  // URL 대기 중인 경우
+  if (waitingForUrl.value) {
+    // 재시도 키워드 체크
+    const retryKeywords = ['다시', '재시도', 'retry', '다시 시도', '다시시도', '재수집']
+    const isRetry = retryKeywords.some(keyword => message.includes(keyword))
+    
+    if (isRetry && lastProductUrl.value) {
+      // 이전 URL로 재시도
+      messages.value.push({
+        role: 'user',
+        text: message
+      })
+      messages.value.push({
+        role: 'bot',
+        text: '알겠어요! 같은 상품으로 다시 시도해볼게요 🔄'
+      })
+      scrollToBottom()
+      await collectProductReviews(lastProductUrl.value)
+    } else if (isValidUrl(message)) {
+      await collectProductReviews(message)
+    } else {
+      // URL이 아닌 경우 재안내
+      messages.value.push({
+        role: 'user',
+        text: message
+      })
+      const retryHint = lastProductUrl.value ? "\n\n💡 또는 '다시 시도'라고 입력하면 이전 링크로 재시도할게요!" : ''
+      messages.value.push({
+        role: 'bot',
+        text: `음... 그건 상품 링크가 아닌 것 같아요 🤔\n\n네이버 스마트스토어 상품 링크를 붙여넣어 주세요!\n(예: https://brand.naver.com/airmade/products/...)${retryHint}`
+      })
+      scrollToBottom()
+    }
+    userInput.value = ''
+    return
   }
+
+  // 일반 채팅
+  await sendUserMessage()
+}
+
+// 리뷰 수집
+const collectProductReviews = async (productUrl, selectedCategory = null) => {
+  // URL 저장
+  lastProductUrl.value = productUrl
+  
+  // 사용자 메시지 추가 (재시도가 아닌 경우에만)
+  if (messages.value.length === 0 || messages.value[messages.value.length - 1].text !== productUrl) {
+    messages.value.push({
+      role: 'user',
+      text: productUrl
+    })
+  }
+
+  scrollToBottom()
+
+  try {
+    isCollectingReviews.value = true
+
+    const response = await collectReviews(productUrl, 200, true, selectedCategory)
+
+    if (response.success) {
+      // 카테고리 감지 실패 - 사용자 선택 필요
+      if (response.category_confidence === 'failed' && response.available_categories) {
+        // 리뷰 캐싱
+        cachedReviews.value = response.reviews
+        
+        messages.value.push({
+          role: 'bot',
+          text: `제품 카테고리를 자동으로 감지하지 못했어요 🤔\n\n아래에서 올바른 카테고리를 선택해주세요:`,
+          categories: response.available_categories,
+          needsCategorySelection: true,
+          productUrl: productUrl
+        })
+        scrollToBottom()
+        isCollectingReviews.value = false
+        return
+      }
+
+      // 카테고리 신뢰도가 낮음 - 확인 필요
+      if (response.category_confidence === 'low' && response.available_categories) {
+        // 리뷰 캐싱
+        cachedReviews.value = response.reviews
+        
+        const categoryName = response.available_categories.find(c => c.key === response.detected_category)?.name || response.detected_category
+        messages.value.push({
+          role: 'bot',
+          text: `제품 카테고리를 '${categoryName}'(으)로 추정했어요.\n맞다면 '확인', 틀렸다면 아래에서 올바른 카테고리를 선택해주세요:`,
+          categories: response.available_categories,
+          detectedCategory: response.detected_category,
+          needsCategoryConfirmation: true,
+          productUrl: productUrl
+        })
+        scrollToBottom()
+        isCollectingReviews.value = false
+        return
+      }
+
+      // 리뷰 수집 성공
+      if (response.reviews && response.reviews.length > 0) {
+        // 리뷰 캐싱
+        cachedReviews.value = response.reviews
+        collectedReviewCount.value = response.total_count
+        reviewsCollected.value = true
+        waitingForUrl.value = false
+
+        // 백엔드에서 이미 세션 생성 완료 - session_id 저장
+        sessionId.value = response.session_id
+        
+        // 세션 데이터 저장
+        saveSessionData()
+        
+        // 수집 완료 메시지
+        const productName = response.product_name || '이 상품'
+        
+        // 감지된 카테고리 저장
+        currentCategory.value = response.detected_category
+        
+        messages.value.push({
+          role: 'bot',
+          text: `굿! 👍 리뷰 ${response.total_count}건을 모았어요.\n${productName}의 별점 낮은 리뷰들을 우선적으로 가져왔어요.\n\n이제 궁금한 점을 물어보세요!`
+        })
+
+        scrollToBottom()
+      } else {
+        messages.value.push({
+          role: 'bot',
+          text: '앗, 리뷰를 가져오는데 실패했어요 😢\n\n다른 상품 링크를 입력하거나 "다시 시도"라고 말씀해주세요!'
+        })
+        scrollToBottom()
+      }
+    } else {
+      messages.value.push({
+        role: 'bot',
+        text: '앗, 리뷰를 가져오는데 실패했어요 😢\n\n다른 상품 링크를 입력하거나 "다시 시도"라고 말씀해주세요!'
+      })
+      scrollToBottom()
+    }
+  } catch (error) {
+    console.error('리뷰 수집 오류:', error)
+    const errorMsg = error.response?.data?.detail || error.message
+    messages.value.push({
+      role: 'bot',
+      text: `리뷰 수집 중 문제가 생겼어요 😅\n\n오류: ${errorMsg}\n\n"다시 시도"라고 입력하거나 다른 상품 링크를 붙여넣어 주세요!`
+    })
+    scrollToBottom()
+  } finally {
+    isCollectingReviews.value = false
+  }
+}
+
+// 입력 플레이스홀더
+const getInputPlaceholder = () => {
+  if (isCollectingReviews.value) return '리뷰 수집 중...'
+  if (waitingForUrl.value) return '스마트스토어 상품 링크를 붙여넣어 주세요 🔗'
+  if (isLoading.value) return '생각 중...'
+  return '궁금한 점을 입력하세요...'
+}
+
+// 초기 환영 메시지
+const showWelcomeMessage = () => {
+  messages.value.push({
+    role: 'bot',
+    text: '안녕하세요! 👋\n\n저는 ReviewLens 봇이에요.\n후회하지 않는 쇼핑을 도와드릴게요!\n\n먼저, 분석하고 싶은 **네이버 스마트스토어(브랜드) 상품 링크**를 붙여넣어 주세요.\n별점 낮은 리뷰들을 모아서 후회 요인을 분석해드릴게요! 🔍'
+  })
+  scrollToBottom()
+}
+
+// 선택지 버튼 클릭 처리
+const handleChoiceClick = async (choice, messageIndex) => {
+  // 선택지를 입력창에 채우고 바로 전송
+  userInput.value = choice
+  
+  // 바로 전송
+  await sendUserMessage()
 }
 
 // 사용자 메시지 전송
@@ -216,9 +625,20 @@ const sendUserMessage = async () => {
     role: 'user',
     text: message
   })
+  
+  // 해당 메시지가 선택지 질문에 대한 답변이면 버튼 비활성화
+  const lastBotMessage = [...messages.value].reverse().find(m => m.role === 'bot' && m.choices)
+  if (lastBotMessage && !lastBotMessage.answered) {
+    lastBotMessage.answered = true
+  }
 
   scrollToBottom()
+  
+  await sendMessageToBackend(message)
+}
 
+// 백엔드로 메시지 전송 (공통 로직)
+const sendMessageToBackend = async (message) => {
   try {
     isLoading.value = true
     const response = await sendMessage(sessionId.value, message)
@@ -229,25 +649,56 @@ const sendUserMessage = async () => {
       messages.value.push({
         role: 'bot',
         text: '대화를 분석하여 후회 요인을 파악했습니다. 아래에서 분석 결과를 확인해주세요.',
-        factors: response.top_factors
+        factors: response.top_factors,
+        isFinal: true
       })
       finalResult.value = response
     } else {
       // 중간 질문
-      messages.value.push({
+      const botMessage = {
         role: 'bot',
         text: response.bot_message || response.question_text || '다음 질문을 선택해주세요.',
-        factors: response.top_factors
-      })
+        questionText: response.bot_message || response.question_text || '다음 질문을 선택해주세요.',
+        relatedReviews: response.related_reviews || null,
+        factors: response.top_factors,
+        isFinal: false,
+        questionId: response.question_id || null,
+        answerType: response.answer_type || 'no_choice',
+        choices: [],
+        answered: false
+      }
+      
+      // single_choice인 경우 선택지 파싱
+      if (response.answer_type === 'single_choice' && response.choices) {
+        botMessage.choices = response.choices.split('|').map(c => c.trim())
+      }
+      
+      messages.value.push(botMessage)
     }
+
+    // 세션 데이터 저장
+    saveSessionData()
 
     scrollToBottom()
   } catch (error) {
     console.error('메시지 전송 오류:', error)
-    messages.value.push({
-      role: 'bot',
-      text: '⚠️ 메시지 전송에 실패했습니다.'
-    })
+    
+    // 세션 만료 에러 처리
+    if (error.response?.status === 404 || error.response?.data?.detail?.includes('Session not found')) {
+      messages.value.push({
+        role: 'bot',
+        text: '⚠️ 세션이 만료되었습니다.\n\n서버가 재시작되었거나 시간이 너무 오래 지났습니다.\n새로운 상품 URL을 입력해서 다시 시작해주세요!'
+      })
+      // 세션 초기화
+      sessionId.value = null
+      reviewsCollected.value = false
+      waitingForUrl.value = true
+    } else {
+      messages.value.push({
+        role: 'bot',
+        text: '⚠️ 메시지 전송에 실패했습니다.\n\n오류: ' + (error.response?.data?.detail || error.message)
+      })
+    }
   } finally {
     isLoading.value = false
   }
@@ -259,7 +710,16 @@ const resetChat = () => {
   finalResult.value = null
   sessionId.value = null
   userInput.value = ''
-  initSession()
+  reviewsCollected.value = false
+  collectedReviewCount.value = 0
+  isCollectingReviews.value = false
+  cachedReviews.value = null
+  currentCategory.value = null
+  waitingForUrl.value = true
+  lastProductUrl.value = ''
+  
+  // 환영 메시지 다시 표시
+  showWelcomeMessage()
 }
 
 // 스크롤 하단으로 이동
@@ -275,38 +735,228 @@ const isTopFactor = (factorKey) => {
   return normalizedTopFactors.value.some((f) => f.factor_key === factorKey)
 }
 
-// 컴포넌트 마운트 시 세션 시작
+// 컴포넌트 마운트 시 세션 복원 또는 환영 메시지 표시
 onMounted(() => {
-  initSession()
+  const restored = loadSessionData()
+  if (!restored || messages.value.length === 0) {
+    showWelcomeMessage()
+  }
 })
 </script>
 
 <style scoped>
+/* Pretendard 폰트 import */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
+/* 디자인 시스템 - 색상 변수 */
+:root {
+  --color-gray-100: rgba(255, 255, 255, 1);
+  --color-gray-200: rgba(244, 244, 244, 1);
+  --color-gray-300: rgba(153, 153, 153, 1);
+  --color-gray-400: rgba(118, 118, 118, 1);
+  --color-gray-500: rgba(18, 18, 18, 1);
+  --color-blue-100: rgba(228, 242, 255, 1);
+  --color-blue-200: rgba(194, 224, 255, 1);
+  --color-blue-300: rgba(1, 127, 255, 1);
+  --color-red-100: rgba(255, 243, 243, 1);
+  --color-red-200: rgba(255, 220, 220, 1);
+  --color-red-300: rgba(255, 74, 29, 1);
+}
+
 .chat-container {
   max-width: 800px;
   margin: 0 auto;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f5f5f5;
+  background: linear-gradient(180deg, #f5f5f5 0%, #ffffff 100%);
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
 
 .chat-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.5rem;
+  color: var(--Colors-Black-100, #121212);
   text-align: center;
+  padding: 1.25rem;
+  /* Global Tokens/Pretendard/title */
+  font-family: Pretendard;
+  font-size: 1.25rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 130%; /* 1.625rem */
+  letter-spacing: -0.05rem;
+  background-image: url("/images/bg_rag.png");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+
+.reset-action {
+  padding: 0.75rem 1rem;
+  background: white;
+  border-top: 1px solid #dee2e6;
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-start;
+}
+
+.reset-conversation-button {
+  padding: 0.6rem 1.2rem;
+  background: var(--color-blue-300, #017FFF);
+  color: var(--color-gray-100, #FFF);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-family: Pretendard;
+  font-size: 0.875rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.0175rem;
+  transition: all 0.2s;
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.20);
+}
+
+.reset-conversation-button:hover {
+  background: var(--color-blue-300, #017FFF);
+  box-shadow: 0 0 8px 0 rgba(1, 127, 255, 0.4);
+}
+
+.reset-conversation-button:active {
+  transform: translateY(1px);
+}
+
+.new-analysis-button {
+  padding: 0.6rem 1.2rem;
+  background: var(--color-gray-400, #767676);
+  color: var(--color-gray-100, #FFF);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-family: Pretendard;
+  font-size: 0.875rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.0175rem;
+  transition: all 0.2s;
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.20);
+}
+
+.new-analysis-button:hover:not(:disabled) {
+  background: var(--color-gray-400, #767676);
+  box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.3);
+}
+
+.new-analysis-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.new-analysis-button:disabled {
+  background: var(--color-gray-200, #F4F4F4);
+  color: var(--color-gray-300, #999);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.collecting-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px)
+}
+.collecting-reviews {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  padding: 2rem;
+}
+
+.collecting-animation {
+  text-align: center;
+}
+
+.spinner {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 1.5rem;
+  border: 4px solid var(--color-gray-200, #F4F4F4);
+  border-top: 4px solid var(--color-blue-300, #017FFF);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.collecting-animation h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--color-blue-300, #017FFF);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+}
+
+.collecting-animation p {
+  margin: 0;
+  color: var(--color-blue-300, #017FFF);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+}
+
+/* 리뷰 수집 완료 정보 */
+.review-collected-info {
+  background: #d4edda;
+  border-bottom: 2px solid #28a745;
+  padding: 1rem;
+  text-align: center;
+}
+
+.info-message {
+  margin: 0;
+  color: #155724;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .chat-header h1 {
   margin: 0;
-  font-size: 1.8rem;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-gray-500, #121212);
 }
 
 .chat-header p {
   margin: 0.5rem 0 0 0;
-  opacity: 0.9;
-  font-size: 0.9rem;
+  font-family: Pretendard;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
+  color: var(--color-gray-400, #767676);
 }
 
 .chat-messages {
@@ -337,15 +987,27 @@ onMounted(() => {
 }
 
 .message.user .message-content {
-  background: #667eea;
-  color: white;
-  border-bottom-right-radius: 0.25rem;
+  background: var(--color-blue-300, #017FFF);
+  color: var(--color-gray-100, #FFF);
+  border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .message.bot .message-content {
-  background: #e9ecef;
-  color: #333;
-  border-bottom-left-radius: 0.25rem;
+  background: var(--color-gray-200, #F4F4F4);
+  color: var(--color-gray-500, #121212);
+  border-radius: 0.25rem 1.25rem 1.25rem 1.25rem;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .message-text {
@@ -353,16 +1015,45 @@ onMounted(() => {
 }
 
 .factors {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--color-blue-200, #C2E0FF);
+  background: var(--color-blue-100, #E4F2FF);
+  padding: 1rem;
+  border-radius: 1.25rem;
   margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid rgba(0,0,0,0.1);
 }
 
 .factors-label {
-  font-size: 0.85rem;
+  font-family: Pretendard;
+  font-size: 0.75rem;
   font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
   margin-bottom: 0.5rem;
-  color: #555;
+  color: var(--color-blue-300, #017FFF);
+  opacity: 0.9;
+  font-style: italic;
+}
+
+.collecting-animation p {
+  margin: 0.5rem 0;
+  color: var(--color-blue-300, #017FFF);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+}
+
+.collecting-subtext {
+  font-family: Pretendard;
+  font-size: 0.75rem !important;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
+  color: var(--color-gray-400, #767676) !important;
+  margin-top: 0.75rem !important
 }
 
 .factor-badges {
@@ -374,16 +1065,224 @@ onMounted(() => {
 .factor-badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
-  background: #667eea;
-  color: white;
-  border-radius: 1rem;
-  font-size: 0.8rem;
-  font-weight: 500;
+  background: var(--color-gray-200, #F4F4F4);
+  color: var(--color-gray-500, #121212);
+  border-radius: 1.25rem;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .factor-badge small {
   opacity: 0.8;
   margin-left: 0.25rem;
+}
+
+/* 질문 번호 */
+.question-number {
+  font-family: Pretendard;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
+  color: var(--color-blue-300, #017FFF);
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--color-blue-100, #E4F2FF);
+  border-radius: 0.5rem;
+  display: inline-block;
+}
+
+/* 관련 리뷰 섹션 */
+.related-reviews-section {
+  margin-bottom: 1rem;
+}
+
+.reviews-header {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-blue-200, #C2E0FF);
+}
+
+.reviews-count {
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-blue-300, #017FFF);
+}
+
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.review-item {
+  background: var(--color-gray-200, #F4F4F4);
+  border: none;
+  border-radius: 1.25rem;
+  padding: 0.75rem;
+  transition: box-shadow 0.2s;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-gray-500, #121212);
+}
+
+.review-item:hover {
+  box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.15);
+}
+
+.review-rating {
+  font-family: Pretendard;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
+  color: var(--color-blue-300, #017FFF);
+  margin-bottom: 0.5rem;
+}
+
+.review-text {
+  color: var(--color-gray-500, #121212);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+}
+
+.review-text p {
+  margin: 0.25rem 0;
+}
+
+.question-text {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-gray-200, #F4F4F4);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-gray-500, #121212);
+}
+
+/* 선택지 버튼 */
+.choices {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.choices-hint {
+  font-family: Pretendard;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
+  color: var(--color-gray-400, #767676);
+  margin-bottom: 0.25rem;
+  font-style: italic;
+}
+
+.choice-button {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--color-gray-100, #FFF);
+  color: var(--color-blue-300, #017FFF);
+  border: 1px solid var(--color-blue-200, #C2E0FF);
+  border-radius: 1.25rem;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.choice-button:hover:not(:disabled) {
+  background: var(--color-blue-100, #E4F2FF);
+  border-color: var(--color-blue-200, #C2E0FF);
+  transform: translateY(-2px);
+}
+
+.choice-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 카테고리 선택 스타일 */
+.category-selection {
+  margin-top: 1rem;
+}
+
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.category-button {
+  padding: 1rem;
+  background: var(--color-gray-100, #FFF);
+  color: var(--color-blue-300, #017FFF);
+  border: 1px solid var(--color-blue-200, #C2E0FF);
+  border-radius: 1.25rem;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  position: relative;
+}
+
+.category-button:hover:not(:disabled) {
+  background: var(--color-blue-100, #E4F2FF);
+  border-color: var(--color-blue-200, #C2E0FF);
+  transform: translateY(-2px);
+  box-shadow: 0 0 8px 0 rgba(1, 127, 255, 0.2);
+}
+
+.category-button.suggested {
+  background: var(--color-blue-100, #E4F2FF);
+  border-color: var(--color-blue-300, #017FFF);
+}
+
+.category-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.suggested-badge {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--color-blue-300, #017FFF);
+  color: var(--color-gray-100, #FFF);
+  font-family: Pretendard;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
+  border-radius: 1rem;
 }
 
 .typing-indicator {
@@ -395,7 +1294,7 @@ onMounted(() => {
 .typing-indicator span {
   width: 8px;
   height: 8px;
-  background: #999;
+  background: var(--color-blue-300, #017FFF);
   border-radius: 50%;
   animation: typing 1.4s infinite;
 }
@@ -420,8 +1319,8 @@ onMounted(() => {
 }
 
 .final-result {
-  background: #fff;
-  border-top: 2px solid #667eea;
+  background: var(--color-gray-100, #FFF);
+  border-top: 1px solid var(--color-gray-200, #F4F4F4);
   padding: 1.5rem;
   margin: 0;
   max-height: 50vh;
@@ -430,35 +1329,94 @@ onMounted(() => {
 }
 
 .final-result h3 {
-  margin-top: 0;
-  color: #667eea;
+  margin: 0 0 1rem 0;
+  color: var(--color-gray-500, #121212);
+  font-family: Pretendard;
+  font-size: 1.25rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 130%;
+  letter-spacing: -0.05rem;
+}
+
+/* LLM 요약 스타일 */
+.llm-summary {
+  background: var(--color-blue-100, #E4F2FF);
+  color: var(--color-gray-500, #121212);
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.10);
+}
+
+.llm-summary h4 {
+  margin: 0 0 1rem 0;
+  color: var(--color-blue-300, #017FFF);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.summary-content {
+  color: var(--color-gray-500, #121212);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.summary-content strong {
+  color: var(--color-blue-300, #017FFF);
+  font-weight: 600;
 }
 
 .calculation-info {
-  background: #f8f9fa;
+  background: var(--color-gray-100, #FFF);
   padding: 1.5rem;
-  border-radius: 0.5rem;
+  border-radius: 1.25rem;
   margin: 1rem 0;
+  border: 1px solid var(--color-gray-200, #F4F4F4);
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.10);
 }
 
 .calculation-info h4 {
   margin-top: 0;
-  color: #333;
-  font-size: 1.1rem;
+  color: var(--color-blue-300, #017FFF);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .calculation-info h5 {
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
-  color: #555;
+  color: var(--color-gray-500, #121212);
+  font-family: Pretendard;
   font-size: 1rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .formula-box {
-  background: white;
+  background: var(--color-gray-200, #F4F4F4);
   padding: 1rem;
   border-radius: 0.5rem;
-  border-left: 4px solid #667eea;
+  border-left: 4px solid var(--color-blue-300, #017FFF);
   margin: 1rem 0;
 }
 
@@ -485,8 +1443,8 @@ onMounted(() => {
 }
 
 .turn-count {
-  background: #667eea;
-  color: white;
+  background: var(--color-blue-300, #017FFF);
+  color: var(--color-gray-100, #FFF);
   padding: 0.25rem 0.75rem;
   border-radius: 0.25rem;
   font-weight: 600;
@@ -504,36 +1462,41 @@ onMounted(() => {
 }
 
 .score-item {
-  background: white;
+  background: var(--color-gray-100, #FFF);
   padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
+  border-radius: 1.25rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 2px solid #e9ecef;
+  border: 1px solid var(--color-gray-200, #F4F4F4);
   transition: all 0.2s;
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.10);
 }
 
 .score-item.top-factor {
-  border-color: #667eea;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+  border-color: var(--color-blue-300, #017FFF);
+  background: var(--color-blue-100, #E4F2FF);
+  box-shadow: 0 0 8px 0 rgba(1, 127, 255, 0.2);
 }
 
 .factor-name {
+  font-family: Pretendard;
   font-weight: 600;
-  color: #333;
-  font-size: 0.9rem;
+  color: var(--color-gray-500, #121212);
+  font-size: 0.875rem;
+  line-height: 150%;
+  letter-spacing: -0.0175rem;
 }
 
 .factor-score {
+  font-family: Pretendard;
   font-weight: 700;
-  color: #667eea;
-  font-size: 1.1rem;
+  color: var(--color-blue-300, #017FFF);
+  font-size: 1rem;
 }
 
 .score-item.top-factor .factor-score {
-  color: #5568d3;
+  color: var(--color-blue-300, #017FFF);
 }
 
 .result-summary {
@@ -541,15 +1504,21 @@ onMounted(() => {
 }
 
 .factor-list {
-  background: #f8f9fa;
+  background: var(--color-gray-200, #F4F4F4);
   padding: 1rem;
-  border-radius: 0.5rem;
+  border-radius: 1.25rem;
   margin: 1rem 0;
 }
 
 .factor-item {
   padding: 0.5rem 0;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid var(--color-gray-200, #F4F4F4);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-gray-500, #121212);
 }
 
 .factor-item:last-child {
@@ -565,15 +1534,20 @@ onMounted(() => {
 /* ✅ 증거 리뷰 미리보기 */
 .evidence-preview {
   margin-top: 1rem;
-  background: #f8f9fa;
-  border-radius: 0.5rem;
+  background: var(--color-gray-200, #F4F4F4);
+  border-radius: 1.25rem;
   padding: 1rem;
 }
 
 .evidence-preview h4 {
   margin: 0 0 0.75rem 0;
-  color: #333;
+  color: var(--color-gray-500, #121212);
+  font-family: Pretendard;
   font-size: 1rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .evidence-list {
@@ -585,89 +1559,125 @@ onMounted(() => {
 }
 
 .evidence-item {
-  background: white;
-  border: 1px solid #e9ecef;
-  border-radius: 0.5rem;
+  background: var(--color-gray-100, #FFF);
+  border: 1px solid var(--color-gray-200, #F4F4F4);
+  border-radius: 1.25rem;
   padding: 0.75rem;
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-gray-500, #121212);
 }
 
 .evidence-meta {
   margin-left: 0.5rem;
-  color: #666;
-  font-size: 0.85rem;
+  color: var(--color-gray-400, #767676);
+  font-family: Pretendard;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.015rem;
 }
 
 .evidence-text {
   display: block;
   margin-top: 0.35rem;
-  color: #333;
+  color: var(--color-gray-500, #121212);
+  font-family: Pretendard;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
 }
 
 .reset-button {
   width: 100%;
   padding: 0.75rem;
-  background: #667eea;
-  color: white;
+  background: var(--color-blue-300, #017FFF);
+  color: var(--color-gray-100, #FFF);
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 1.25rem;
+  font-family: Pretendard;
   font-size: 1rem;
+  font-style: normal;
   font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.20);
 }
 
 .reset-button:hover {
-  background: #5568d3;
+  background: var(--color-blue-300, #017FFF);
+  box-shadow: 0 0 8px 0 rgba(1, 127, 255, 0.4);
 }
 
 .chat-input {
   display: flex;
   gap: 0.5rem;
   padding: 1rem;
-  background: white;
-  border-top: 1px solid #dee2e6;
+  background: var(--color-gray-100, #FFF);
+  border-top: 1px solid var(--color-gray-200, #F4F4F4);
+  box-shadow: 0 -2px 4px 0 rgba(0, 0, 0, 0.05);
 }
 
 .input-field {
   flex: 1;
   padding: 0.75rem 1rem;
-  border: 2px solid #e9ecef;
-  border-radius: 2rem;
+  border: none;
+  border-radius: 1.375rem;
+  background: var(--color-gray-100, #FFF);
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.20);
+  font-family: Pretendard;
   font-size: 1rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
+  color: var(--color-gray-500, #121212);
   outline: none;
-  transition: border-color 0.2s;
+  transition: box-shadow 0.2s;
 }
 
 .input-field:focus {
-  border-color: #667eea;
+  box-shadow: 0 0 8px 0 rgba(1, 127, 255, 0.3);
 }
 
 .input-field:disabled {
-  background: #f8f9fa;
+  background: var(--color-gray-200, #F4F4F4);
   cursor: not-allowed;
 }
 
 .send-button {
   padding: 0.75rem 1.5rem;
-  background: #667eea;
-  color: white;
+  background: var(--color-blue-300, #017FFF);
+  color: var(--color-gray-100, #FFF);
   border: none;
-  border-radius: 2rem;
+  border-radius: 1.375rem;
+  font-family: Pretendard;
   font-size: 1rem;
+  font-style: normal;
   font-weight: 600;
+  line-height: 150%;
+  letter-spacing: -0.02rem;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 4px 0 rgba(0, 0, 0, 0.20);
 }
 
 .send-button:hover:not(:disabled) {
-  background: #5568d3;
+  background: var(--color-blue-300, #017FFF);
+  box-shadow: 0 0 8px 0 rgba(1, 127, 255, 0.4);
 }
 
 .send-button:disabled {
-  background: #ccc;
+  background: var(--color-gray-300, #999);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* 모바일 반응형 스타일 */

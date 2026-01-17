@@ -14,8 +14,16 @@ requests==2.32.3
 # API utilities
 python-multipart==0.0.20
 
+# LLM providers (선택적 설치)
+google-generativeai>=0.8.0
+openai>=1.50.0
+anthropic>=0.39.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Monitoring
+prometheus-client>=0.20.0
+
 # Testing
 pytest==8.4.2
-
-# Prometheus-client
-prometheus-client==0.20.0
