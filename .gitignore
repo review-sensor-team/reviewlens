@@ -34,6 +34,7 @@ node_modules/
 out/*.json
 out/*.txt
 out/*.md
+out/sessions/
 out_test/
 
 # Logs
