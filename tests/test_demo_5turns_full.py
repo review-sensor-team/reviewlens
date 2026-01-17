@@ -10,7 +10,7 @@ def test_demo_5turns_full_scenario():
     """5턴 시나리오 전체 테스트 (DEMO_SCENARIO_5TURNS.md 기준)"""
     
     # 세션 시작
-    session = DialogueSession(category="appliance_heated_humidifier", data_dir="backend/data")
+    session = DialogueSession(category="humidifier", data_dir="backend/data")
     
     # Turn 1: 사용자 첫 질문
     user_msg_1 = "가열식 가습기 밤에 틀어도 괜찮을까요? 소음이 걱정돼요."

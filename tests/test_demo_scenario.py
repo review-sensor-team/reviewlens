@@ -8,7 +8,7 @@ from backend.app.domain.dialogue.session import DialogueSession
 
 def test_demo_3to5_turns():
     # 세션 시작
-    session = DialogueSession(category="appliance_heated_humidifier", data_dir="backend/data")
+    session = DialogueSession(category="humidifier", data_dir="backend/data")
 
     # 시나리오에 따른 사용자 입력들
     user_turns = [
