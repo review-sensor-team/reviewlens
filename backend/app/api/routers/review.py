@@ -298,7 +298,20 @@ async def analyze_product(
         # 7. 세션 ID 생성 및 캐싱
         session_id = f"session-{category}-{hash(product_name) % 100000}"
         
-        # 세션 데이터 캐싱 (factor-reviews API에서 사용)
+        # 초기 대화 내역 생성 (분석 안내 + 키워드 리스트)
+        factor_list_text = "\n".join([
+            f"- {f['display_name']}"
+            for f in suggested_factors
+        ])
+        
+        initial_dialogue = [
+            {
+                "role": "assistant",
+                "message": f"{initial_message}\n{factor_list_text}"
+            }
+        ]
+        
+        # 세션 데이터 캠싱 (factor-reviews API에서 사용)
         global _session_cache
         _session_cache[session_id] = {
             "scored_df": analysis["scored_reviews_df"],
@@ -306,7 +319,8 @@ async def analyze_product(
             "factors": factors,
             "top_factors": analysis["top_factors"],  # (factor_key, score) 튜플 리스트
             "category": category,
-            "product_name": product_name
+            "product_name": product_name,
+            "dialogue_history": initial_dialogue  # 초기 대화 내역
         }
         
         logger.info(f"상품 분석 완료: {product_name} - {len(suggested_factors)}개 후회 포인트 (세션 캐싱 완료)")
@@ -472,6 +486,28 @@ async def get_factor_reviews(
         
         logger.info(f"리뷰 조회 완료: {len(reviews)}건, 질문 {len(questions)}개")
         
+        # dialogue_history에 키워드 선택 및 리뷰 요약 추가
+        if session_id in _session_cache:
+            # 매칭된 용어 통계 생성
+            term_stats = {}
+            for term in anchor_terms:
+                count = sum(1 for r in reviews if term in r.get('matched_terms', []))
+                if count > 0:
+                    term_stats[term] = count
+            
+            # 리뷰 요약 메시지 생성
+            term_summary = ", ".join([f"'{term}' {count}건" for term, count in sorted(term_stats.items(), key=lambda x: -x[1])])
+            review_summary = f'"{target_factor.display_name}"과 관련된 리뷰를 {term_summary}을 찾았어요.'
+            
+            # 세션 dialogue_history 업데이트
+            if "dialogue_history" not in _session_cache[session_id]:
+                _session_cache[session_id]["dialogue_history"] = []
+            
+            _session_cache[session_id]["dialogue_history"].append({"role": "user", "message": target_factor.display_name})
+            _session_cache[session_id]["dialogue_history"].append({"role": "assistant", "message": review_summary})
+            
+            logger.info(f"대화 히스토리 업데이트: {target_factor.display_name} 선택")
+        
         return {
             "factor_key": factor_key,
             "display_name": target_factor.display_name,
@@ -542,8 +578,15 @@ async def answer_question(
             "factor_key": request.factor_key
         })
         
+        # dialogue_history에도 추가
+        if "dialogue_history" not in session_data:
+            session_data["dialogue_history"] = []
+        
+        session_data["dialogue_history"].append({"role": "assistant", "message": question_text})
+        session_data["dialogue_history"].append({"role": "user", "message": request.answer})
+        
         turn_count = len(session_data["question_history"])
-        logger.info(f"질문 히스토리: {turn_count}턴")
+        logger.info(f"질문 히스토리: {turn_count}턴, 대화 히스토리: {len(session_data['dialogue_history'])}개")
         
         # 3. 수렴 조건 체크 (v1: MIN_FINALIZE_TURNS=3, MIN_STABILITY_HITS=2)
         from ...core.settings import settings
@@ -741,22 +784,8 @@ async def answer_question(
                 product_name=session_data.get("product_name", "이 제품")
             )
             
-            # 대화 히스토리 복원 (모든 QA 포함)
-            dialogue_session.dialogue_history = []
-            for qa in session_data.get("question_history", []):
-                q_text = qa.get("question_text", "")
-                
-                # question_text가 저장되어 있으면 사용, 없으면 question_id로 찾기
-                if not q_text and qa.get("question_id"):
-                    _, _, questions_df = load_csvs(get_data_dir())
-                    question_row = questions_df[questions_df['question_id'] == qa['question_id']]
-                    if len(question_row) > 0:
-                        q_text = question_row.iloc[0]['question_text']
-                
-                # 질문 텍스트가 있으면 히스토리에 추가
-                if q_text:
-                    dialogue_session.dialogue_history.append({"role": "assistant", "message": q_text})
-                    dialogue_session.dialogue_history.append({"role": "user", "message": qa['answer']})
+            # 세션의 dialogue_history 복원 (초기 안내 + 키워드 선택 + 질문-답변 모두 포함)
+            dialogue_session.dialogue_history = session_data.get("dialogue_history", [])
             
             dialogue_session.turn_count = len(session_data.get("question_history", []))
             # (세션에 저장된 top_factors 사용)
