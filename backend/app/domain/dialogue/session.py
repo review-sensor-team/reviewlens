@@ -255,12 +255,9 @@ class DialogueSession:
             # factor_id로 매칭되는 질문들 찾기
             matched_count = 0
             for question in self.questions:
-                # factor_id로 매칭
+                # factor_id로 정확히 매칭 (카테고리별로 이미 필터링된 factor 사용)
                 if question.factor_id != factor_obj.factor_id:
-                    # 부분일치(예: noise_sleep vs noise) - factor_key 기반
-                    prefix = factor_key.split("_")[0]
-                    if not question.factor_key.startswith(prefix):
-                        continue
+                    continue
                 
                 matched_count += 1
                 
