@@ -11,7 +11,7 @@ import pandas as pd
 
 from ..reg.store import Factor, Question, load_csvs, parse_factors, parse_questions
 from ..review.scoring import compute_review_factor_scores
-from ..review.normalize import normalize_review
+from ..review.normalize import normalize_review, normalize_text
 from ..review.retrieval import retrieve_evidence_reviews
 from ...infra.observability.metrics import (
     dialogue_sessions_total,
@@ -129,7 +129,7 @@ class DialogueSession:
         self.dialogue_history.append({"role": "user", "message": user_message})
 
         # 1) 사용자 메시지로 factor 점수 누적(negation 감점 X)
-        norm = normalize(user_message)
+        norm = normalize_text(user_message)
         matched_factors = []
         matched_factors = []
         for f in self.factors:
