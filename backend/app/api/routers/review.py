@@ -569,10 +569,15 @@ async def answer_question(
             if not current_factor_key:
                 raise HTTPException(status_code=400, detail="factor_key를 찾을 수 없습니다")
             
-            # factor_key와 매칭되는 모든 질문 찾기
-            all_questions = questions_df[questions_df['factor_key'] == current_factor_key]
-            print(f"[DEBUG] Factor '{current_factor_key}' 전체 질문: {len(all_questions)}개")
-            logger.info(f"Factor '{current_factor_key}' 전체 질문: {len(all_questions)}개")
+            # 세션의 factor 중에서 현재 factor_key에 해당하는 factor 찾기
+            current_factor = next((f for f in session_data.get("factors", []) if f.factor_key == current_factor_key), None)
+            if not current_factor:
+                raise HTTPException(status_code=400, detail=f"세션에 factor_key '{current_factor_key}'가 없습니다")
+            
+            # factor_id로 정확히 매칭되는 질문만 찾기 (카테고리 혼동 방지)
+            all_questions = questions_df[questions_df['factor_id'] == current_factor.factor_id]
+            print(f"[DEBUG] Factor '{current_factor_key}' (factor_id={current_factor.factor_id}) 전체 질문: {len(all_questions)}개")
+            logger.info(f"Factor '{current_factor_key}' (factor_id={current_factor.factor_id}) 전체 질문: {len(all_questions)}개")
             
             # 아직 묻지 않은 질문 필터링 (ID와 텍스트 둘 다 체크 - 중복 텍스트 방지)
             related_questions = all_questions[
