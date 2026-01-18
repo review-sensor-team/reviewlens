@@ -205,6 +205,24 @@ def _get_current_factor_next_question(
     return None
 
 
+def _filter_unasked_questions(questions_df, asked_ids: set, asked_texts: set):
+    """아직 묻지 않은 질문 필터링"""
+    return questions_df[
+        (~questions_df['question_id'].isin(asked_ids)) &
+        (~questions_df['question_text'].isin(asked_texts))
+    ]
+
+def _build_question_dict(question_row, factor_key: str) -> dict:
+    """질문 행에서 질문 딕셔너리 생성"""
+    return {
+        "question_id": question_row['question_id'],
+        "question_text": question_row['question_text'],
+        "answer_type": question_row['answer_type'],
+        "choices": question_row['choices'].split('|') if question_row.get('choices') else [],
+        "next_factor_hint": question_row.get('next_factor_hint', ''),
+        "factor_key": factor_key
+    }
+
 def _get_next_factor_question(
     questions_df,
     next_factor_key: str,
@@ -222,36 +240,23 @@ def _get_next_factor_question(
     Returns:
         dict: 다음 질문 정보 또는 None
     """
-    # questions_df에서 next_factor_key로 직접 찾기
     next_factor_questions = questions_df[questions_df['factor_key'] == next_factor_key]
     
-    if len(next_factor_questions) > 0:
-        # 아직 묻지 않은 질문만 필터링
-        next_unasked = next_factor_questions[
-            (~next_factor_questions['question_id'].isin(asked_ids)) &
-            (~next_factor_questions['question_text'].isin(asked_texts))
-        ]
-        
-        next_factor_id = int(next_factor_questions.iloc[0]['factor_id'])
-        logger.info(f"다음 factor '{next_factor_key}' (factor_id={next_factor_id}) 질문: {len(next_factor_questions)}개, 미질문: {len(next_unasked)}개")
-        
-        if len(next_unasked) > 0:
-            next_q = next_unasked.iloc[0]
-            question = {
-                "question_id": next_q['question_id'],
-                "question_text": next_q['question_text'],
-                "answer_type": next_q['answer_type'],
-                "choices": next_q['choices'].split('|') if next_q.get('choices') else [],
-                "next_factor_hint": next_q.get('next_factor_hint', ''),
-                "factor_key": next_factor_key
-            }
-            logger.info(f"다음 factor '{next_factor_key}'로 이동: question_id={next_q['question_id']}")
-            return question
-        else:
-            logger.info(f"다음 factor '{next_factor_key}'의 질문도 모두 소진됨")
-    else:
+    if len(next_factor_questions) == 0:
         logger.info(f"CSV에서 next_factor_key '{next_factor_key}'를 찾을 수 없음")
+        return None
     
+    next_unasked = _filter_unasked_questions(next_factor_questions, asked_ids, asked_texts)
+    next_factor_id = int(next_factor_questions.iloc[0]['factor_id'])
+    logger.info(f"다음 factor '{next_factor_key}' (factor_id={next_factor_id}) 질문: {len(next_factor_questions)}개, 미질문: {len(next_unasked)}개")
+    
+    if len(next_unasked) > 0:
+        next_q = next_unasked.iloc[0]
+        question = _build_question_dict(next_q, next_factor_key)
+        logger.info(f"다음 factor '{next_factor_key}'로 이동: question_id={next_q['question_id']}")
+        return question
+    
+    logger.info(f"다음 factor '{next_factor_key}'의 질문도 모두 소진됨")
     return None
 
 
