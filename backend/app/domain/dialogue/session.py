@@ -645,16 +645,18 @@ class DialogueSession:
             has_analysis=True,
         )
 
-    def _build_llm_prompt(self, llm_ctx: Dict) -> str:
-        # 대화 히스토리 포맷팅
+    def _format_dialogue_history(self, dialogue_history: List[Dict]) -> str:
+        """대화 히스토리를 텍스트로 포맷팅"""
         dialogue_text = ""
-        for turn in llm_ctx.get("dialogue_history", []):
+        for turn in dialogue_history:
             role = "사용자" if turn["role"] == "user" else "상담원"
             dialogue_text += f"{role}: {turn['message']}\n"
+        return dialogue_text
 
-        # 상위 요인 포맷팅(표시명 사용)
+    def _format_top_factors(self, top_factors: List[Dict]) -> str:
+        """상위 요인을 번호가 매겨진 리스트로 포맷팅 (표시명 사용)"""
         factors_lines: List[str] = []
-        for idx, factor in enumerate(llm_ctx.get("top_factors", []), 1):
+        for idx, factor in enumerate(top_factors, 1):
             factor_key = factor["factor_key"]
             score = float(factor.get("score") or 0.0)
             display_name = str(factor.get("display_name") or "").strip()
@@ -662,11 +664,12 @@ class DialogueSession:
                 factor_obj = self.factors_map.get(factor_key)
                 display_name = (getattr(factor_obj, "display_name", "") or factor_key) if factor_obj else factor_key
             factors_lines.append(f"{idx}. {display_name} ({factor_key}) (점수: {score:.2f})")
-        factors_text = "\n".join(factors_lines)
+        return "\n".join(factors_lines)
 
-        # 증거 리뷰 포맷팅(label 포함 + review_id 강조)
+    def _format_evidence_reviews(self, evidence_reviews: List[Dict]) -> str:
+        """증거 리뷰를 포맷팅 (label 포함 + review_id 강조)"""
         reviews_lines: List[str] = []
-        for idx, review in enumerate(llm_ctx.get("evidence_reviews", []), 1):
+        for idx, review in enumerate(evidence_reviews, 1):
             rid = review.get("review_id")
             rating = review.get("rating", 0)
             label = review.get("label", "NEU")
@@ -675,11 +678,19 @@ class DialogueSession:
             reviews_lines.append(
                 f"[{idx}] review_id={rid} | rating={rating} | label={label} | factor={fkey}\n{excerpt}"
             )
-        reviews_text = "\n\n".join(reviews_lines)
+        return "\n\n".join(reviews_lines)
 
-        safety_text = "\n".join(f"- {rule}" for rule in llm_ctx.get("safety_rules", []))
+    def _format_safety_rules(self, safety_rules: List[str]) -> str:
+        """안전 규칙을 불릿 포인트로 포맷팅"""
+        return "\n".join(f"- {rule}" for rule in safety_rules)
 
-        # v2 JSON 출력 스키마(근거 review_id 강제)
+    def _build_llm_prompt(self, llm_ctx: Dict) -> str:
+        """LLM 프롬프트 생성 (v2 JSON 출력 스키마)"""
+        dialogue_text = self._format_dialogue_history(llm_ctx.get("dialogue_history", []))
+        factors_text = self._format_top_factors(llm_ctx.get("top_factors", []))
+        reviews_text = self._format_evidence_reviews(llm_ctx.get("evidence_reviews", []))
+        safety_text = self._format_safety_rules(llm_ctx.get("safety_rules", []))
+
         prompt = f"""당신은 리뷰 분석 전문가입니다. 사용자와의 대화 내용을 바탕으로 '후회 요인'을 분석하고, 아래의 리뷰 발췌(excerpt)만을 근거로 답변을 작성하세요.
 
 카테고리: {llm_ctx.get("category_slug", "unknown")}
