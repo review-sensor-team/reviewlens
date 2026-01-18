@@ -1,59 +1,19 @@
 """
-load_reference_data.py
-======================
+Load ReviewLens reference datasets into PostgreSQL.
 
-[목적]
-- ReviewLens 서비스에서 사용하는 Reference Data를
-  PostgreSQL 데이터베이스에 "정식 테이블(ref_*)"로 적재하는 스크립트이다.
+What it does
+- Loads reference datasets from backend/data/reference/ into ref_* tables:
+  - reg_factor_v4_1.csv  -> ref_products, ref_factors
+  - reg_question_v6.csv  -> ref_questions
+  - {product_no:02d}_reviews_smartstore_*.json -> ref_reviews
 
-- 기존 CSV/JSON 파일을 런타임마다 직접 읽는 방식은
-  ▶ 로딩 속도가 느리고
-  ▶ 분석/집계(SQL) 활용이 어렵기 때문에
-  ▶ Reference Data를 DB로 이전(DB화)한다.
+When to run
+- During local/dev DB bootstrap (after schema_reference.sql applied).
+- When reference files change and need re-loading.
 
-[적재 대상]
-1) ref_products
-   - 상품 단위 기준 테이블 (MVP: 10개 상품 고정)
-   - product_no (PK)를 기준으로 모든 데이터가 연결됨
-
-2) ref_factors
-   - 후회 요인(REG Factor)
-   - factor_id 규칙:
-       101~110   → product_no = 1
-       201~210   → product_no = 2
-       ...
-       1001~1010 → product_no = 10
-   - product_no + factor_seq 구조로 정규화됨
-
-3) ref_questions
-   - 대화 질문 템플릿
-   - factor_id / factor_key 기반으로 factor와 연결
-
-4) ref_reviews
-   - SmartStore 등에서 수집한 리뷰 원문
-   - product_no + review_id 기준으로 저장
-
-[언제 실행하는가]
-- DB 스키마(schema_reference.sql, schema_runtime.sql)를 적용한 이후
-- Reference Data(CSV/JSON)를 최초 적재할 때
-- 또는 Reference Data 버전(reg_factor_v2 → v3 등)이 변경되었을 때
-
-※ 일반적인 API 요청/서비스 실행 시에는 호출하지 않는다.
-
-[중요 설계 원칙]
-- Reference Data는 "읽기 전용" 성격
-- 서비스 실행 중 자동 갱신/재적재 하지 않음
-- 재적재가 필요할 경우 이 스크립트를 수동 실행
-
-[적재 실행 커맨드]
-python db/scripts/load_reference_data.py `
-  --db-url "postgresql://postgres:sqsq2601@localhost:5432/reviewlens" `
-  --factors "backend/data/reference/reg_factor_v4_1.csv" `
-  --questions "backend/data/reference/reg_question_v6.csv" `
-  --reviews-glob "backend/data/reference/*_reviews_smartstore_*.json" `
-  --strict-product-no `
-  --source-name "reg_factor_v4_1+reg_question_v6+reviews_smartstore"
-
+Notes
+- Reference data is treated as read-only and loaded via upsert (idempotent).
+- product_no for reviews is derived from the filename prefix (e.g. "02_...json" -> 2).
 """
 
 from __future__ import annotations

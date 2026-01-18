@@ -4,6 +4,22 @@
 DB는 **Docker 기반 PostgreSQL + Redis**로 구성되며, **GUI 없이 스크립트 중심 운영**을 전제로 한다.
 
 ---
+## 0. Quick smoke test (DB end-to-end)
+
+아래 3단계로 DB 파이프라인이 정상 동작하는지 확인할 수 있습니다.
+
+```bash
+# 1) DB 컨테이너 초기화 (기존 데이터 제거 후 재기동)
+docker compose -f docker-compose.db.yml down -v
+docker compose -f docker-compose.db.yml up -d
+
+# 2) 스키마 적용 + Reference 데이터 적재 + 검증 출력
+.\.venv\Scripts\python.exe db\scripts\init_db.py
+
+# 3) DB export / backup 결과 생성
+.\.venv\Scripts\python.exe db\scripts\export_db_artifacts.py
+
+---
 
 ## 1. DB 구성 개요
 
