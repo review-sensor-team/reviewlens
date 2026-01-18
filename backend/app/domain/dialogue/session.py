@@ -350,27 +350,29 @@ class DialogueSession:
             return [(f.factor_key, float(getattr(f, "weight", 1.0) or 1.0)) for f in by_w]
         return []
 
-    def _pick_next_question(self, top_factors: List[Tuple[str, float]]) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
-        """다음 질문 선택
+    def _determine_focus_factors(self, top_factors: List[Tuple[str, float]]) -> List[str]:
+        """집중 수렴 전략에 따라 포커스할 요인 결정
         
-        Returns:
-            (question_text, question_id, answer_type, choices)
+        - turn 1~threshold: top2까지 후보
+        - turn threshold+1부터: top1에 더 집중
         """
-        # 질문 리스트가 없으면 기본 질문
-        if not self.questions:
-            logger.debug(f"  - 질문 DB 없음, fallback 사용")
-            return self._fallback_question()
-
-        # "집중 수렴" 전략:
-        # - turn 1~threshold: top2까지 후보
-        # - turn threshold+1부터: top1에 더 집중
         focus = 2 if self.turn_count <= settings.DIALOGUE_FOCUS_TURNS_THRESHOLD else 1
         focus_factors = [k for k, _ in top_factors[:focus]]
         logger.debug(f"  - focus_factors: {focus_factors} (turn={self.turn_count})")
+        return focus_factors
 
-        candidates: List[Tuple[int, str, str, str, Optional[List[str]]]] = []  # (prio, q_text, q_id, answer_type, choices)
+    def _collect_question_candidates(
+        self, 
+        focus_factors: List[str]
+    ) -> List[Tuple[int, str, str, str, Optional[List[str]]]]:
+        """포커스 요인에 대한 질문 후보 수집
+        
+        Returns:
+            List of (priority, question_text, question_id, answer_type, choices)
+        """
+        candidates: List[Tuple[int, str, str, str, Optional[List[str]]]] = []
+        
         for factor_key in focus_factors:
-            # factor_key로 Factor 객체 찾기
             factor_obj = self.factors_map.get(factor_key)
             if not factor_obj:
                 logger.debug(f"    - factor_key '{factor_key}' not in factors_map")
@@ -378,24 +380,18 @@ class DialogueSession:
             
             logger.debug(f"    - factor '{factor_key}' (id={factor_obj.factor_id}) 질문 검색 중...")
             
-            # factor_id로 매칭되는 질문들 찾기
             matched_count = 0
             for question in self.questions:
-                # factor_id로 정확히 매칭 (카테고리별로 이미 필터링된 factor 사용)
                 if question.factor_id != factor_obj.factor_id:
                     continue
                 
                 matched_count += 1
                 
-                # 이미 물어본 질문은 제외
                 if question.question_text in self.asked_questions:
                     logger.debug(f"      - 질문 '{question.question_text[:30]}...' 이미 물어봄")
                     continue
 
-                # question_id를 우선순위로 사용 (낮은 숫자가 우선)
                 prio = question.question_id
-                
-                # choices 파싱
                 choices = None
                 if question.choices and question.answer_type in ["single_choice", "multiple_choice"]:
                     choices = [c.strip() for c in question.choices.split("|") if c.strip()]
@@ -404,18 +400,41 @@ class DialogueSession:
                 logger.debug(f"      ✓ 후보 추가: q_id={question.question_id}, '{question.question_text[:30]}...'")
             
             logger.debug(f"    - factor '{factor_key}' 매칭 질문: {matched_count}개")
+        
+        return candidates
 
-        # 우선순위 낮은 숫자 먼저
+    def _select_best_question(
+        self, 
+        candidates: List[Tuple[int, str, str, str, Optional[List[str]]]]
+    ) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
+        """후보 중 최적 질문 선택 (우선순위 기반)
+        
+        Returns:
+            (question_text, question_id, answer_type, choices)
+        """
+        if not candidates:
+            logger.debug(f"  - 후보 질문 없음, fallback 사용 (asked_questions={len(self.asked_questions)}개)")
+            return self._fallback_question()
+        
         candidates.sort(key=lambda x: x[0])
+        _, picked_text, picked_id, picked_type, picked_choices = candidates[0]
+        self.asked_questions.add(picked_text)
+        logger.debug(f"  - 선택된 질문: q_id={picked_id}, '{picked_text[:30]}...'")
+        return picked_text, picked_id, picked_type, picked_choices
 
-        if candidates:
-            _, picked_text, picked_id, picked_type, picked_choices = candidates[0]
-            self.asked_questions.add(picked_text)
-            logger.debug(f"  - 선택된 질문: q_id={picked_id}, '{picked_text[:30]}...'")
-            return picked_text, picked_id, picked_type, picked_choices
+    def _pick_next_question(self, top_factors: List[Tuple[str, float]]) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
+        """다음 질문 선택
+        
+        Returns:
+            (question_text, question_id, answer_type, choices)
+        """
+        if not self.questions:
+            logger.debug(f"  - 질문 DB 없음, fallback 사용")
+            return self._fallback_question()
 
-        logger.debug(f"  - 후보 질문 없음, fallback 사용 (asked_questions={len(self.asked_questions)}개)")
-        return self._fallback_question()
+        focus_factors = self._determine_focus_factors(top_factors)
+        candidates = self._collect_question_candidates(focus_factors)
+        return self._select_best_question(candidates)
 
     def _pick_multiple_questions(self, selected_factor: str, top_factors: List[Tuple[str, float]]) -> Tuple[str, Optional[str], str, Optional[List[str]]]:
         """선택된 factor에 대한 첫 번째 질문을 반환 (choices 포함)
