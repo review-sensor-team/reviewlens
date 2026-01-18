@@ -182,6 +182,7 @@ const sessionId = ref(null)
 const availableProducts = ref([])
 const analysisMode = ref(null) // null, 'product', 'url'
 const useProductSelection = ref(false) // settings에서 가져올 값
+const waitingForNewAnalysisResponse = ref(false) // "다른 상품 분석?" 질문 대기 중
 
 // 환영 메시지 (설정에 따라 변경)
 const welcomeMessage = computed(() => {
@@ -401,6 +402,34 @@ const send = async () => {
   const text = input.value
   input.value = ''
   
+  // "다른 상품 분석?" 질문에 대한 답변 처리
+  if (waitingForNewAnalysisResponse.value) {
+    pushUser(text)
+    waitingForNewAnalysisResponse.value = false
+    
+    // 긍정 답변 감지
+    const positivePatterns = /^(네|yes|응|예|ㅇㅇ|ㅇ|ok|okay|좋아|그래|맞아|분석|새로|다른|할게|할래|해줘|부탁|원해)/i
+    // 부정 답변 감지
+    const negativePatterns = /^(아니|no|노|ㄴㄴ|ㄴ|싫어|안|됐어|됐|괜찮|필요없|그만|재분석|다시|처음)/i
+    
+    if (positivePatterns.test(text.trim())) {
+      // 긍정: 분석 초기화 (새로운 상품 분석)
+      pushBot('알겠습니다! 새로운 상품을 분석해드릴게요. 상품을 선택해주세요. ✨')
+      startNewAnalysis()
+      return
+    } else if (negativePatterns.test(text.trim())) {
+      // 부정: 상품 재분석 (같은 상품, 대화만 초기화)
+      pushBot('알겠습니다! 같은 상품으로 처음부터 다시 시작할게요. 🔄')
+      await clearConversation()
+      return
+    } else {
+      // 애매한 답변: 다시 물어보기
+      waitingForNewAnalysisResponse.value = true
+      pushBot('"네" 또는 "아니오"로 답변해주세요. 다른 상품을 분석하시겠어요?')
+      return
+    }
+  }
+  
   // URL 패턴 확인 (http:// 또는 https://로 시작하거나 일반적인 URL 형태)
   const isUrl = /^https?:\/\/.+/.test(text.trim()) || 
                 /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(text.trim())
@@ -534,6 +563,7 @@ const send = async () => {
         pushBot('분석이 완료되었습니다.', null, null, null, 'analyze')
       }
       
+      waitingForNewAnalysisResponse.value = true
       pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
     } else if (data.next_question) {
       // 다음 질문 표시
@@ -822,6 +852,7 @@ const selectOption = async (opt) => {
       }
       
       // 추가 안내
+      waitingForNewAnalysisResponse.value = true
       pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
     } else if (data.next_question) {
       // 관련 리뷰가 있으면 먼저 표시

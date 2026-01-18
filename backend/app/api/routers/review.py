@@ -304,10 +304,14 @@ async def analyze_product(
             for f in suggested_factors
         ])
         
+        # 분석 안내 메시지 생성
+        review_count = len(normalized_df)
+        analysis_message = f"{product_name} {review_count}건의 리뷰에서 후회 포인트를 분석했어요. 아래 항목 중 궁금한 걸 선택해주세요!"
+        
         initial_dialogue = [
             {
                 "role": "assistant",
-                "message": f"{initial_message}\n{factor_list_text}"
+                "message": f"{analysis_message}\n{factor_list_text}"
             }
         ]
         
@@ -506,6 +510,11 @@ async def get_factor_reviews(
             _session_cache[session_id]["dialogue_history"].append({"role": "user", "message": target_factor.display_name})
             _session_cache[session_id]["dialogue_history"].append({"role": "assistant", "message": review_summary})
             
+            # 첫 번째 질문을 current_question에 저장 (프론트엔드에서 표시할 질문)
+            if questions:
+                _session_cache[session_id]["current_question"] = questions[0]
+                logger.info(f"current_question 저장: {questions[0].get('question_text', '')[:50]}")
+            
             logger.info(f"대화 히스토리 업데이트: {target_factor.display_name} 선택")
         
         return {
@@ -588,12 +597,18 @@ async def answer_question(
         turn_count = len(session_data["question_history"])
         logger.info(f"질문 히스토리: {turn_count}턴, 대화 히스토리: {len(session_data['dialogue_history'])}개")
         
-        # 3. 수렴 조건 체크 (v1: MIN_FINALIZE_TURNS=3, MIN_STABILITY_HITS=2)
+        # 3. 수렴 조건 체크
+        # - MIN_TURNS 이상 or
+        # - Fallback 질문을 1회 이상 답변한 경우
         from ...core.settings import settings
         MIN_TURNS = 3  # 최소 질문 답변 횟수
-        is_converged = turn_count >= MIN_TURNS
         
-        logger.info(f"수렴 체크: turn_count={turn_count}, is_converged={is_converged}")
+        # Fallback 질문 답변 횟수 확인
+        fallback_count = sum(1 for q in session_data["question_history"] if q.get("is_fallback"))
+        
+        is_converged = (turn_count >= MIN_TURNS) or (fallback_count >= 1)
+        
+        logger.info(f"수렴 체크: turn_count={turn_count}, fallback_count={fallback_count}, is_converged={is_converged}")
         
         # 4. 수렴되지 않았으면 다음 질문 로드
         if not is_converged:
@@ -638,10 +653,48 @@ async def answer_question(
             next_question = None
             
             if len(related_questions) == 0:
-                # 해당 factor의 질문이 모두 소진되면 fallback 질문 사용
-                logger.info(f"Factor '{current_factor_key}' 질문 소진 - fallback 질문 사용")
+                # 해당 factor의 질문이 모두 소진되면 next_factor_hint를 참고하여 다음 factor로 이동
+                logger.info(f"Factor '{current_factor_key}' 질문 소진 - next_factor_hint 확인")
                 
-                # 카테고리별 fallback 질문
+                # 마지막 질문의 next_factor_hint 가져오기
+                last_question = all_questions.iloc[-1] if len(all_questions) > 0 else None
+                next_factor_key = last_question.get('next_factor_hint', '') if last_question is not None else ''
+                
+                logger.info(f"next_factor_hint: '{next_factor_key}'")
+                
+                # next_factor_hint가 있으면 해당 factor의 질문 찾기
+                if next_factor_key:
+                    # 세션의 factors에서 next_factor_key에 해당하는 factor 찾기
+                    next_factor = next((f for f in session_data.get("factors", []) if f.factor_key == next_factor_key), None)
+                    
+                    if next_factor:
+                        # 다음 factor의 질문 중 아직 묻지 않은 질문 찾기
+                        next_factor_questions = questions_df[questions_df['factor_id'] == next_factor.factor_id]
+                        next_unasked = next_factor_questions[
+                            (~next_factor_questions['question_id'].isin(asked_ids)) &
+                            (~next_factor_questions['question_text'].isin(asked_texts))
+                        ]
+                        
+                        logger.info(f"다음 factor '{next_factor_key}' (factor_id={next_factor.factor_id}) 질문: {len(next_factor_questions)}개, 미질문: {len(next_unasked)}개")
+                        
+                        if len(next_unasked) > 0:
+                            # 다음 factor의 첫 번째 질문 선택
+                            next_q = next_unasked.iloc[0]
+                            next_question = {
+                                "question_id": next_q['question_id'],
+                                "question_text": next_q['question_text'],
+                                "answer_type": next_q['answer_type'],
+                                "choices": next_q['choices'].split('|') if next_q.get('choices') else [],
+                                "next_factor_hint": next_q.get('next_factor_hint', ''),
+                                "factor_key": next_factor_key
+                            }
+                            logger.info(f"다음 factor '{next_factor_key}'로 이동: question_id={next_q['question_id']}")
+                
+                # next_factor_hint가 없거나 다음 factor에도 질문이 없으면 fallback 질문 사용
+                if next_question is None:
+                    logger.info(f"다음 factor 없음 또는 질문 소진 - fallback 질문 사용")
+                    
+                    # 카테고리별 fallback 질문
                 category = session_data.get("category", "")
                 category_questions = {
                     'mattress': [
@@ -731,7 +784,7 @@ async def answer_question(
                     logger.info(f"Fallback 질문 랜덤 선택: {fb_q}")
             
             if next_question is None and len(related_questions) > 0:
-                # 첫 번째 질문 선택 (factor 질문)
+                # 현재 factor의 다음 질문 선택
                 next_q = related_questions.iloc[0]
                 
                 next_question = {
@@ -742,6 +795,7 @@ async def answer_question(
                     "next_factor_hint": next_q.get('next_factor_hint', ''),
                     "factor_key": current_factor_key
                 }
+                logger.info(f"현재 factor '{current_factor_key}'의 다음 질문: question_id={next_q['question_id']}")
             
             if next_question:
                 # 세션에 현재 질문 저장 (다음 답변 시 히스토리에 추가하기 위해)

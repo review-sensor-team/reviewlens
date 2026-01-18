@@ -1,4 +1,14 @@
+#!/usr/bin/env python3
 """
+LLM 클라이언트 리팩토링 스크립트
+프롬프트 로직을 Base 클래스로 통합하고, 각 클라이언트는 API 호출만 담당
+"""
+
+import os
+from pathlib import Path
+
+# Base 클래스 코드
+BASE_CODE = '''"""
 LLM 클라이언트 베이스 클래스
 """
 import logging
@@ -29,7 +39,7 @@ class PromptBuilder:
     ) -> str:
         """유저 프롬프트 생성"""
         # 상위 요인 정리
-        factors_text = "\n".join([
+        factors_text = "\\n".join([
             f"{i+1}. {factor_key} (점수: {score:.2f})"
             for i, (factor_key, score) in enumerate(top_factors[:5])
         ])
@@ -45,7 +55,7 @@ class PromptBuilder:
                     dialogue_lines.append(f"사용자: {text}")
                 elif role == 'assistant':
                     dialogue_lines.append(f"어시스턴트: {text}")
-            dialogue_text = "\n".join(dialogue_lines)
+            dialogue_text = "\\n".join(dialogue_lines)
         
         # 증거 리뷰 정리
         evidence_text = ""
@@ -53,7 +63,7 @@ class PromptBuilder:
             label = rev.get('label', 'NEU')
             rating = rev.get('rating', 0)
             excerpt = rev.get('excerpt', '')
-            evidence_text += f"{i}. [{label}] {rating}점 - {excerpt}\n"
+            evidence_text += f"{i}. [{label}] {rating}점 - {excerpt}\\n"
         
         # User Prompt 구성
         user_prompt_parts = [
@@ -104,7 +114,7 @@ class PromptBuilder:
             "**중요**: 반드시 유효한 JSON 형식으로만 응답하세요. 추가 설명이나 마크다운은 포함하지 마세요."
         ])
         
-        return "\n".join(user_prompt_parts)
+        return "\\n".join(user_prompt_parts)
     
     @staticmethod
     def get_fallback_summary(
@@ -177,22 +187,16 @@ class BaseLLMClient(ABC):
             category_name, product_name, dialogue_history
         )
         
-        # 프롬프트 저장 (모든 LLM)
-        self._save_prompt(system_prompt, user_prompt)
+        # 프롬프트 저장 (OpenAI만)
+        if self.__class__.__name__ == "OpenAIClient":
+            self._save_prompt(system_prompt, user_prompt)
         
         # API 호출 (각 구현체에서 정의)
         try:
-            response = self._call_api(system_prompt, user_prompt)
-            
-            # 응답 저장
-            self._save_response(response, product_name)
-            
-            return response
+            return self._call_api(system_prompt, user_prompt)
         except Exception as e:
             logger.error(f"{self.__class__.__name__} API 호출 실패: {e}")
-            fallback = PromptBuilder.get_fallback_summary(top_factors, category_name, product_name)
-            self._save_response(fallback, product_name)
-            return fallback
+            return PromptBuilder.get_fallback_summary(top_factors, category_name, product_name)
     
     @abstractmethod
     def _call_api(self, system_prompt: str, user_prompt: str) -> str:
@@ -209,7 +213,59 @@ class BaseLLMClient(ABC):
         pass
     
     def _save_prompt(self, system_prompt: str, user_prompt: str):
-        """프롬프트를 파일로 저장 (모든 LLM 공통)"""
+        """프롬프트 저장 (OpenAI 전용, 다른 클라이언트는 override 불필요)"""
+        pass
+'''
+
+# OpenAI 클라이언트 코드
+OPENAI_CODE = '''"""
+OpenAI LLM 클라이언트
+"""
+import logging
+from .llm_base import BaseLLMClient
+
+logger = logging.getLogger(__name__)
+
+
+class OpenAIClient(BaseLLMClient):
+    """OpenAI API 클라이언트"""
+    
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.7, max_tokens: int = 2000):
+        super().__init__(api_key, model, temperature, max_tokens)
+        
+        if not api_key:
+            logger.warning("OpenAI API key가 설정되지 않았습니다.")
+            self.client = None
+        else:
+            try:
+                from openai import OpenAI
+                self.client = OpenAI(api_key=api_key)
+                logger.info(f"OpenAI 클라이언트 초기화 완료: model={model}")
+            except Exception as e:
+                logger.error(f"OpenAI 클라이언트 초기화 실패: {e}")
+                self.client = None
+    
+    def _call_api(self, system_prompt: str, user_prompt: str) -> str:
+        """OpenAI API 호출"""
+        if not self.client:
+            raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다")
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=self.temperature,
+            max_tokens=self.max_tokens
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        logger.info(f"OpenAI 요약 생성 완료: {len(summary)}자")
+        return summary
+    
+    def _save_prompt(self, system_prompt: str, user_prompt: str):
+        """프롬프트를 파일로 저장"""
         try:
             from datetime import datetime
             from pathlib import Path
@@ -220,62 +276,145 @@ class BaseLLMClient(ABC):
             
             prompt_file = out_dir / f"llm_prompt_{timestamp}.txt"
             with open(prompt_file, "w", encoding="utf-8") as f:
-                f.write("=" * 80 + "\n")
-                f.write("SYSTEM PROMPT\n")
-                f.write("=" * 80 + "\n")
+                f.write("=" * 80 + "\\n")
+                f.write("SYSTEM PROMPT\\n")
+                f.write("=" * 80 + "\\n")
                 f.write(system_prompt)
-                f.write("\n\n")
-                f.write("=" * 80 + "\n")
-                f.write("USER PROMPT\n")
-                f.write("=" * 80 + "\n")
+                f.write("\\n\\n")
+                f.write("=" * 80 + "\\n")
+                f.write("USER PROMPT\\n")
+                f.write("=" * 80 + "\\n")
                 f.write(user_prompt)
-                f.write("\n")
+                f.write("\\n")
             
             logger.info(f"[LLM 프롬프트 저장] {prompt_file}")
         except Exception as e:
             logger.error(f"프롬프트 저장 실패: {e}")
+'''
+
+# Gemini 클라이언트 코드
+GEMINI_CODE = '''"""
+Gemini LLM 클라이언트
+"""
+import logging
+from .llm_base import BaseLLMClient
+
+logger = logging.getLogger(__name__)
+
+
+class GeminiClient(BaseLLMClient):
+    """Google Gemini API 클라이언트"""
     
-    def _save_response(self, response: str, product_name: str):
-        """LLM 응답을 JSON 파일로 저장"""
-        try:
-            from datetime import datetime
-            from pathlib import Path
-            import json
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_dir = Path("out")
-            out_dir.mkdir(exist_ok=True)
-            
-            response_file = out_dir / f"llm_response_{timestamp}.json"
-            
-            # JSON 파싱 시도
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash", temperature: float = 0.7, max_tokens: int = 2000):
+        super().__init__(api_key, model, temperature, max_tokens)
+        
+        if not api_key:
+            logger.warning("Gemini API key가 설정되지 않았습니다.")
+            self.client = None
+        else:
             try:
-                response_json = json.loads(response)
-                # 제품명과 타임스탬프 추가
-                response_json["_metadata"] = {
-                    "product_name": product_name,
-                    "timestamp": timestamp,
-                    "model": self.model,
-                    "provider": self.__class__.__name__
-                }
-                
-                with open(response_file, "w", encoding="utf-8") as f:
-                    json.dump(response_json, f, ensure_ascii=False, indent=2)
-                    
-            except json.JSONDecodeError:
-                # JSON 파싱 실패 시 텍스트로 저장
-                with open(response_file, "w", encoding="utf-8") as f:
-                    json.dump({
-                        "raw_response": response,
-                        "_metadata": {
-                            "product_name": product_name,
-                            "timestamp": timestamp,
-                            "model": self.model,
-                            "provider": self.__class__.__name__,
-                            "parse_error": "JSON 파싱 실패"
-                        }
-                    }, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"[LLM 응답 저장] {response_file}")
-        except Exception as e:
-            logger.error(f"응답 저장 실패: {e}")
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                self.client = genai.GenerativeModel(model)
+                logger.info(f"Gemini 클라이언트 초기화 완료: model={model}")
+            except Exception as e:
+                logger.error(f"Gemini 클라이언트 초기화 실패: {e}")
+                self.client = None
+    
+    def _call_api(self, system_prompt: str, user_prompt: str) -> str:
+        """Gemini API 호출"""
+        if not self.client:
+            raise RuntimeError("Gemini 클라이언트가 초기화되지 않았습니다")
+        
+        # Gemini는 system_prompt와 user_prompt를 합쳐서 전달
+        combined_prompt = f"{system_prompt}\\n\\n{user_prompt}"
+        
+        response = self.client.generate_content(
+            combined_prompt,
+            generation_config={
+                "temperature": self.temperature,
+                "max_output_tokens": self.max_tokens,
+            }
+        )
+        
+        summary = response.text.strip()
+        logger.info(f"Gemini 요약 생성 완료: {len(summary)}자")
+        return summary
+'''
+
+# Claude 클라이언트 코드
+CLAUDE_CODE = '''"""
+Anthropic Claude LLM 클라이언트
+"""
+import logging
+from .llm_base import BaseLLMClient
+
+logger = logging.getLogger(__name__)
+
+
+class ClaudeClient(BaseLLMClient):
+    """Anthropic Claude API 클라이언트"""
+    
+    def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022", temperature: float = 0.7, max_tokens: int = 2000):
+        super().__init__(api_key, model, temperature, max_tokens)
+        
+        if not api_key:
+            logger.warning("Anthropic API key가 설정되지 않았습니다.")
+            self.client = None
+        else:
+            try:
+                from anthropic import Anthropic
+                self.client = Anthropic(api_key=api_key)
+                logger.info(f"Claude 클라이언트 초기화 완료: model={model}")
+            except Exception as e:
+                logger.error(f"Claude 클라이언트 초기화 실패: {e}")
+                self.client = None
+    
+    def _call_api(self, system_prompt: str, user_prompt: str) -> str:
+        """Claude API 호출"""
+        if not self.client:
+            raise RuntimeError("Claude 클라이언트가 초기화되지 않았습니다")
+        
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        summary = response.content[0].text.strip()
+        logger.info(f"Claude 요약 생성 완료: {len(summary)}자")
+        return summary
+'''
+
+def main():
+    """리팩토링 실행"""
+    llm_dir = Path(__file__).parent / "backend" / "llm"
+    
+    # 파일 작성
+    files = {
+        "llm_base.py": BASE_CODE,
+        "llm_openai.py": OPENAI_CODE,
+        "llm_gemini.py": GEMINI_CODE,
+        "llm_claude.py": CLAUDE_CODE
+    }
+    
+    for filename, code in files.items():
+        filepath = llm_dir / filename
+        print(f"✍️  {filename} 작성 중...")
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(code)
+        print(f"✅ {filename} 완료")
+    
+    print("\n🎉 LLM 클라이언트 리팩토링 완료!")
+    print("📝 변경 사항:")
+    print("  - PromptBuilder 클래스를 llm_base.py에 추가")
+    print("  - 각 LLM 클라이언트는 _call_api() 메서드만 구현")
+    print("  - 프롬프트 구성 로직이 중복 제거됨")
+    print("  - 템플릿 메서드 패턴 적용")
+
+if __name__ == "__main__":
+    main()
