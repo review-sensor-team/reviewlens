@@ -27,7 +27,20 @@ class Settings(BaseSettings):
     CLAUDE_MODEL: Optional[str] = None
     
     # Prompt 전략 설정 (.env에서 읽어옴)
-    PROMPT_STRATEGY: str = "default"  # default|concise|detailed|friendly
+    PROMPT_STRATEGY: str = "default"  # default|concise|detailed|friendly 또는 쉼표로 구분하여 여러 개
+    
+    def get_prompt_strategies(self) -> List[str]:
+        """PROMPT_STRATEGY를 파싱하여 전략 리스트 반환
+        
+        Returns:
+            전략 이름 리스트 (예: ['default'] 또는 ['default', 'friendly'])
+        """
+        if not self.PROMPT_STRATEGY:
+            return ["default"]
+        
+        # 쉼표로 분리하고 공백 제거
+        strategies = [s.strip() for s in self.PROMPT_STRATEGY.split(",") if s.strip()]
+        return strategies if strategies else ["default"]
 
     #LLM Common parameters
     LLM_TEMPERATURE: float = 0.6

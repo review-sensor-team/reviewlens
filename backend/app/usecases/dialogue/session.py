@@ -543,13 +543,13 @@ class DialogueSession:
         }
     
     def _build_frontend_context(self, top_factors: List[Tuple[str, float]], evidence: List[Dict], 
-                                 llm_summary: str, calculation_info: Dict) -> Dict:
+                                 llm_summary: Any, calculation_info: Dict) -> Dict:
         """프론트엔드용 LLM 컨텍스트 구성
         
         Args:
             top_factors: 상위 factor 리스트
             evidence: Evidence 리뷰 리스트
-            llm_summary: LLM 요약
+            llm_summary: LLM 요약 (str 또는 List[Dict])
             calculation_info: 계산 정보
             
         Returns:
@@ -561,7 +561,7 @@ class DialogueSession:
             "의학/법률 조언 금지",
         ]
         
-        return {
+        context = {
             "category_slug": self.category_slug,
             "dialogue_history": self.dialogue_history,
             "top_factors": [
@@ -586,8 +586,18 @@ class DialogueSession:
             ],
             "safety_rules": safety_rules,
             "calculation_info": calculation_info,
-            "llm_summary": llm_summary,
         }
+        
+        # llm_summary가 리스트면 다중 전략, 아니면 단일 전략
+        if isinstance(llm_summary, list):
+            # 다중 전략: llm_summaries 배열로 반환
+            context["llm_summaries"] = llm_summary
+            context["llm_summary"] = llm_summary[0]["summary"] if llm_summary else ""  # 호환성
+        else:
+            # 단일 전략: 기존 형식 유지
+            context["llm_summary"] = llm_summary
+        
+        return context
 
     def _generate_analysis(self, top_factors: List[Tuple[str, float]]) -> Dict:
         """분석 결과 생성 (대화 종료 없이)"""
@@ -735,8 +745,13 @@ class DialogueSession:
         self, 
         top_factors: List[Tuple[str, float]], 
         evidence_reviews: List[Dict]
-    ) -> str:
-        """LLM을 사용하여 최종 분석 요약 생성"""
+    ) -> Any:
+        """LLM을 사용하여 최종 분석 요약 생성
+        
+        Returns:
+            단일 전략: str (요약 텍스트)
+            다중 전략: List[Dict] (전략별 요약)
+        """
         try:
             llm_context = self._prepare_llm_context(top_factors, evidence_reviews)
             self._save_llm_context(llm_context)
@@ -797,24 +812,55 @@ class DialogueSession:
         llm_context: Dict,
         top_factors: List[Tuple[str, float]], 
         evidence_reviews: List[Dict]
-    ) -> str:
-        """LLM 클라이언트를 호출하여 요약 생성 (메트릭 기록 포함)"""
+    ) -> Any:
+        """LLM 클라이언트를 호출하여 요약 생성 (메트릭 기록 포함)
+        
+        Returns:
+            단일 전략: str (요약 텍스트)
+            다중 전략: List[Dict] (전략별 요약)
+        """
         llm_client = get_llm_client()
         provider = settings.LLM_PROVIDER
         
-        with Timer(llm_duration_seconds, {'provider': provider}):
-            summary = llm_client.generate_summary(
-                top_factors=top_factors,
-                evidence_reviews=evidence_reviews,
-                total_turns=self.turn_count,
-                category_name=llm_context["category_name"],
-                product_name=llm_context["product_name"],
-                dialogue_history=self.dialogue_history
-            )
+        # 설정에서 전략 목록 가져오기
+        strategies = settings.get_prompt_strategies()
         
-        llm_calls_total.labels(provider=provider, status='success').inc()
-        logger.info(f"[LLM 요약 생성 완료] {len(summary)}자")
-        return summary
+        # 단일 전략
+        if len(strategies) == 1:
+            logger.info(f"[LLM] 단일 전략 '{strategies[0]}' 사용")
+            
+            with Timer(llm_duration_seconds, {'provider': provider}):
+                summary = llm_client.generate_summary(
+                    top_factors=top_factors,
+                    evidence_reviews=evidence_reviews,
+                    total_turns=self.turn_count,
+                    category_name=llm_context["category_name"],
+                    product_name=llm_context["product_name"],
+                    dialogue_history=self.dialogue_history
+                )
+            
+            llm_calls_total.labels(provider=provider, status='success').inc()
+            logger.info(f"[LLM 요약 생성 완료] {len(summary)}자")
+            return summary
+        
+        # 다중 전략
+        else:
+            logger.info(f"[LLM] 다중 전략 {strategies} 사용 ({len(strategies)}개)")
+            
+            with Timer(llm_duration_seconds, {'provider': provider}):
+                summaries = llm_client.generate_summaries_with_strategies(
+                    strategies=strategies,
+                    top_factors=top_factors,
+                    evidence_reviews=evidence_reviews,
+                    total_turns=self.turn_count,
+                    category_name=llm_context["category_name"],
+                    product_name=llm_context["product_name"],
+                    dialogue_history=self.dialogue_history
+                )
+            
+            llm_calls_total.labels(provider=provider, status='success').inc()
+            logger.info(f"[LLM 다중 요약 생성 완료] {len(summaries)}개 전략")
+            return summaries
 
     def _fallback_summary(
         self, 

@@ -132,6 +132,80 @@ class BaseLLMClient(ABC):
             self._save_response(fallback, product_name)
             return fallback
     
+    def generate_summaries_with_strategies(
+        self,
+        strategies: List[str],
+        top_factors: List[tuple],
+        evidence_reviews: List[Dict[str, Any]],
+        total_turns: int,
+        category_name: str,
+        product_name: str = "이 제품",
+        dialogue_history: Optional[List[Dict[str, str]]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        여러 프롬프트 전략으로 분석 요약 생성
+        
+        Args:
+            strategies: 프롬프트 전략 리스트 (예: ['default', 'friendly'])
+            top_factors: 상위 후회 요인
+            evidence_reviews: 증거 리뷰 리스트
+            total_turns: 총 대화 턴 수
+            category_name: 제품 카테고리명
+            product_name: 제품명
+            dialogue_history: 대화 내역
+            
+        Returns:
+            List[Dict]: 각 전략별 분석 결과 리스트
+                [
+                    {"strategy": "default", "summary": {...}},
+                    {"strategy": "friendly", "summary": {...}}
+                ]
+        """
+        results = []
+        
+        for strategy_name in strategies:
+            logger.info(f"[Multi-Strategy] '{strategy_name}' 전략으로 LLM 요청 중...")
+            
+            try:
+                # 전략 변경
+                PromptBuilder.set_strategy(strategy_name)
+                
+                # 프롬프트 구성
+                system_prompt = PromptBuilder.build_system_prompt()
+                user_prompt = PromptBuilder.build_user_prompt(
+                    top_factors, evidence_reviews, total_turns,
+                    category_name, product_name, dialogue_history
+                )
+                
+                # 프롬프트 저장 (전략 이름 포함)
+                self._save_prompt_with_strategy(system_prompt, user_prompt, strategy_name)
+                
+                # API 호출
+                response = self._call_api(system_prompt, user_prompt)
+                
+                # 응답 저장 (전략 이름 포함)
+                self._save_response_with_strategy(response, product_name, strategy_name)
+                
+                results.append({
+                    "strategy": strategy_name,
+                    "summary": response
+                })
+                
+                logger.info(f"[Multi-Strategy] '{strategy_name}' 전략 완료")
+                
+            except Exception as e:
+                logger.error(f"[Multi-Strategy] '{strategy_name}' 전략 실패: {e}")
+                
+                # Fallback 응답
+                fallback = PromptBuilder.get_fallback_summary(top_factors, category_name, product_name)
+                results.append({
+                    "strategy": strategy_name,
+                    "summary": fallback,
+                    "error": str(e)
+                })
+        
+        return results
+    
     @abstractmethod
     def _call_api(self, system_prompt: str, user_prompt: str) -> str:
         """
@@ -210,6 +284,82 @@ class BaseLLMClient(ABC):
                             "timestamp": timestamp,
                             "model": self.model,
                             "provider": self.__class__.__name__,
+                            "parse_error": "JSON 파싱 실패"
+                        }
+                    }, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"[LLM 응답 저장] {response_file}")
+        except Exception as e:
+            logger.error(f"응답 저장 실패: {e}")
+    
+    def _save_prompt_with_strategy(self, system_prompt: str, user_prompt: str, strategy: str):
+        """전략 이름을 포함하여 프롬프트 저장"""
+        try:
+            from datetime import datetime
+            from pathlib import Path
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_dir = Path("out")
+            out_dir.mkdir(exist_ok=True)
+            
+            prompt_file = out_dir / f"llm_prompt_{strategy}_{timestamp}.txt"
+            with open(prompt_file, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"STRATEGY: {strategy}\n")
+                f.write("=" * 80 + "\n")
+                f.write("SYSTEM PROMPT\n")
+                f.write("=" * 80 + "\n")
+                f.write(system_prompt)
+                f.write("\n\n")
+                f.write("=" * 80 + "\n")
+                f.write("USER PROMPT\n")
+                f.write("=" * 80 + "\n")
+                f.write(user_prompt)
+                f.write("\n")
+            
+            logger.info(f"[LLM 프롬프트 저장] {prompt_file}")
+        except Exception as e:
+            logger.error(f"프롬프트 저장 실패: {e}")
+    
+    def _save_response_with_strategy(self, response: str, product_name: str, strategy: str):
+        """전략 이름을 포함하여 LLM 응답 저장"""
+        try:
+            from datetime import datetime
+            from pathlib import Path
+            import json
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_dir = Path("out")
+            out_dir.mkdir(exist_ok=True)
+            
+            response_file = out_dir / f"llm_response_{strategy}_{timestamp}.json"
+            
+            # JSON 파싱 시도
+            try:
+                response_json = json.loads(response)
+                # 메타데이터 추가
+                response_json["_metadata"] = {
+                    "product_name": product_name,
+                    "timestamp": timestamp,
+                    "model": self.model,
+                    "provider": self.__class__.__name__,
+                    "strategy": strategy
+                }
+                
+                with open(response_file, "w", encoding="utf-8") as f:
+                    json.dump(response_json, f, ensure_ascii=False, indent=2)
+                    
+            except json.JSONDecodeError:
+                # JSON 파싱 실패 시 텍스트로 저장
+                with open(response_file, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "raw_response": response,
+                        "_metadata": {
+                            "product_name": product_name,
+                            "timestamp": timestamp,
+                            "model": self.model,
+                            "provider": self.__class__.__name__,
+                            "strategy": strategy,
                             "parse_error": "JSON 파싱 실패"
                         }
                     }, f, ensure_ascii=False, indent=2)
