@@ -652,15 +652,30 @@ async def answer_question(
             
             next_question = None
             
-            if len(related_questions) == 0:
-                # 해당 factor의 질문이 모두 소진되면 next_factor_hint를 참고하여 다음 factor로 이동
+            # 현재 factor의 다음 질문이 있는지 확인
+            if len(related_questions) > 0:
+                # 현재 factor의 다음 질문 선택
+                next_q = related_questions.iloc[0]
+                
+                next_question = {
+                    "question_id": next_q['question_id'],
+                    "question_text": next_q['question_text'],
+                    "answer_type": next_q['answer_type'],
+                    "choices": next_q['choices'].split('|') if next_q.get('choices') else [],
+                    "next_factor_hint": next_q.get('next_factor_hint', ''),
+                    "factor_key": current_factor_key
+                }
+                logger.info(f"현재 factor '{current_factor_key}'의 다음 질문: question_id={next_q['question_id']}")
+            
+            elif len(related_questions) == 0:
+                # 현재 factor의 질문이 모두 소진되면 방금 답변한 질문의 next_factor_hint 확인
                 logger.info(f"Factor '{current_factor_key}' 질문 소진 - next_factor_hint 확인")
                 
-                # 마지막 질문의 next_factor_hint 가져오기
-                last_question = all_questions.iloc[-1] if len(all_questions) > 0 else None
-                next_factor_key = last_question.get('next_factor_hint', '') if last_question is not None else ''
+                # 방금 답변한 질문(current_question)의 next_factor_hint 가져오기
+                prev_question = session_data.get("current_question", {})
+                next_factor_key = prev_question.get('next_factor_hint', '')
                 
-                logger.info(f"next_factor_hint: '{next_factor_key}'")
+                logger.info(f"방금 답변한 질문의 next_factor_hint: '{next_factor_key}'")
                 
                 # next_factor_hint가 있으면 해당 factor의 질문 찾기
                 if next_factor_key:
@@ -782,20 +797,6 @@ async def answer_question(
                     # 세션에 fallback 질문 기록
                     session_data["asked_fallback_questions"].append(fb_q)
                     logger.info(f"Fallback 질문 랜덤 선택: {fb_q}")
-            
-            if next_question is None and len(related_questions) > 0:
-                # 현재 factor의 다음 질문 선택
-                next_q = related_questions.iloc[0]
-                
-                next_question = {
-                    "question_id": next_q['question_id'],
-                    "question_text": next_q['question_text'],
-                    "answer_type": next_q['answer_type'],
-                    "choices": next_q['choices'].split('|') if next_q.get('choices') else [],
-                    "next_factor_hint": next_q.get('next_factor_hint', ''),
-                    "factor_key": current_factor_key
-                }
-                logger.info(f"현재 factor '{current_factor_key}'의 다음 질문: question_id={next_q['question_id']}")
             
             if next_question:
                 # 세션에 현재 질문 저장 (다음 답변 시 히스토리에 추가하기 위해)
