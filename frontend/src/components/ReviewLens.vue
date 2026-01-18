@@ -60,60 +60,58 @@
       </div>
 
       <!-- Messages -->
-      <template v-for="(msg, idx) in messages" :key="idx">
-        <div :class="['message', msg.role]">
-          <div class="bubble-wrapper">
-            <div class="bubble" :class="msg.messageType">
-              <!-- 메시지 텍스트 먼저 표시 -->
-              <div v-if="msg.messageType" class="message-with-icon">
-                <img :src="getMessageIcon(msg.messageType)" alt="아이콘" class="message-icon" />
-                <div v-html="msg.text"></div>
-              </div>
-              <p v-else-if="msg.text" v-html="msg.text"></p>
+      <div v-for="(msg, idx) in messages" :key="idx" :class="['message', msg.role]">
+        <div class="bubble-wrapper">
+          <div class="bubble" :class="msg.messageType">
+            <!-- 메시지 텍스트 먼저 표시 -->
+            <div v-if="msg.messageType" class="message-with-icon">
+              <img :src="getMessageIcon(msg.messageType)" alt="아이콘" class="message-icon" />
+              <div v-html="msg.text"></div>
+            </div>
+            <p v-else-if="msg.text" v-html="msg.text"></p>
 
-              <!-- 리뷰 근거 출력 (메시지 다음) -->
-              <div v-if="msg.reviews" class="reviews-evidence">
-                <div class="evidence-title">
-                  <span v-if="msg.reviewSummary">{{ msg.reviewSummary }}</span>
+            <!-- 리뷰 근거 출력 (메시지 다음) -->
+            <div v-if="msg.reviews" class="reviews-evidence">
+              <div class="evidence-title">
+                <span v-if="msg.reviewSummary">{{ msg.reviewSummary }}</span>
+              </div>
+              <div
+                v-for="(review, rIdx) in msg.reviews"
+                :key="rIdx"
+                class="review-item"
+              >
+                <div class="message-with-icon">
+                  <img src="/images/ic_review.png" alt="아이콘" class="message-icon" />
+                  <div class="review-text">{{ review.text }}</div>
                 </div>
-                <div
-                  v-for="(review, rIdx) in msg.reviews"
-                  :key="rIdx"
-                  class="review-item"
-                >
-                  <div class="message-with-icon">
-                    <img src="/images/ic_review.png" alt="아이콘" class="message-icon" />
-                    <div class="review-text">{{ review.text }}</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 후회 포인트 버튼 -->
-              <div v-if="msg.regretPoints" class="option-list">
-                <button
-                  v-for="factor in msg.regretPoints"
-                  :key="factor.factor_key || factor"
-                  @click="selectRegretPoint(typeof factor === 'object' ? factor.factor_key : factor)"
-                >
-                  {{ typeof factor === 'object' ? factor.display_name : factor }}
-                </button>
-              </div>
-
-              <!-- 일반 옵션 버튼 -->
-              <div v-if="msg.options" class="option-list">
-                <button
-                  v-for="(opt, optIdx) in msg.options"
-                  :key="`opt-${optIdx}-${opt}`"
-                  @click="selectOption(opt)"
-                >
-                  {{ opt }}
-                </button>
               </div>
             </div>
-            <div class="timestamp">{{ msg.timestamp }}</div>
+
+            <!-- 후회 포인트 버튼 -->
+            <div v-if="msg.regretPoints" class="option-list">
+              <button
+                v-for="factor in msg.regretPoints"
+                :key="factor.factor_key || factor"
+                @click="selectRegretPoint(typeof factor === 'object' ? factor.factor_key : factor)"
+              >
+                {{ typeof factor === 'object' ? factor.display_name : factor }}
+              </button>
+            </div>
+
+            <!-- 일반 옵션 버튼 -->
+            <div v-if="msg.options" class="option-list">
+              <button
+                v-for="(opt, optIdx) in msg.options"
+                :key="`opt-${optIdx}-${opt}`"
+                @click="selectOption(opt)"
+              >
+                {{ opt }}
+              </button>
+            </div>
           </div>
+          <div class="timestamp">{{ msg.timestamp }}</div>
         </div>
-      </template>
+      </div>
 
       <!-- Loading -->
       <div v-if="loading" class="message bot">
