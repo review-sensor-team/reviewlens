@@ -14,6 +14,7 @@ from .core.logging import setup_logging
 from backend.app.infra.observability.metrics import (
     http_requests_total,
     http_request_duration_seconds,
+    errors_total,
 )
 
 # .env 파일 로드
@@ -39,30 +40,44 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         start_time = time.time()
+        status_code = 500  # 기본값 (예외 발생 시)
         
-        # 요청 처리
-        response = await call_next(request)
-        
-        # 처리 시간 계산
-        duration = time.time() - start_time
-        
-        # 메트릭 기록
-        method = request.method
-        endpoint = request.url.path
-        status_code = response.status_code
-        
-        # 요청 수 카운터
-        http_requests_total.labels(
-            method=method,
-            endpoint=endpoint,
-            status_code=str(status_code)
-        ).inc()
-        
-        # 응답 시간 히스토그램
-        http_request_duration_seconds.labels(
-            method=method,
-            endpoint=endpoint
-        ).observe(duration)
+        try:
+            # 요청 처리
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception as e:
+            # 예외 발생 시에도 메트릭 기록
+            logger.error(f"Request failed: {e}", exc_info=True)
+            raise
+        finally:
+            # 처리 시간 계산
+            duration = time.time() - start_time
+            
+            # 메트릭 기록
+            method = request.method
+            endpoint = request.url.path
+            
+            # 요청 수 카운터
+            http_requests_total.labels(
+                method=method,
+                endpoint=endpoint,
+                status_code=str(status_code)
+            ).inc()
+            
+            # 응답 시간 히스토그램
+            http_request_duration_seconds.labels(
+                method=method,
+                endpoint=endpoint
+            ).observe(duration)
+            
+            # 에러 추적 (4xx, 5xx)
+            if status_code >= 400:
+                error_type = "client_error" if 400 <= status_code < 500 else "server_error"
+                errors_total.labels(
+                    error_type=error_type,
+                    component=endpoint
+                ).inc()
         
         # 로깅
         logger.info(

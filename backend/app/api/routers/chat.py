@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ...services.chat_service import ChatService
 from ...services.prompt_service import PromptService
 from ...services.review_service import ReviewService
+from ...infra.observability.metrics import track_errors
 
 logger = logging.getLogger("api.routers.chat")
 
@@ -125,6 +126,7 @@ async def create_session(
 
 
 @router.post("/messages", response_model=ChatMessageResponse)
+@track_errors(error_type='api_error', component='send_message')
 async def send_message(
     request: ChatMessageRequest,
     chat_service: ChatService = Depends(get_chat_service)

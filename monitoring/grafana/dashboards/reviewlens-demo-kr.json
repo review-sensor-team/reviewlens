@@ -24,8 +24,7 @@
   "panels": [
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -84,8 +83,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "sum(rate(http_requests_total[1m]))",
           "refId": "A"
@@ -97,8 +95,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -157,10 +154,9 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "   (sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))) * 100 or vector(0)",
+          "expr": "   (sum(rate(http_requests_total{status=~\"5..\"}[1m])) / sum(rate(http_requests_total[1m]))) * 100 or vector(0)",
           "refId": "A"
         }
       ],
@@ -170,8 +166,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -230,10 +225,9 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
           "refId": "A"
         }
       ],
@@ -243,8 +237,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -303,21 +296,19 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "(sum(rate(dialogue_completions_total[5m])) / sum(rate(dialogue_sessions_total[5m]))) * 100",
+          "expr": "(sum(increase(dialogue_completions_total[10m])) / clamp_min(sum(increase(dialogue_sessions_total[10m])), 1)) * 100",
           "refId": "A"
         }
       ],
       "title": "세션 완료율",
       "type": "gauge",
-      "description": "시작한 세션 중 완료된 비율 (%)"
+      "description": "10m 동안 시작한 세션 중 완료된 비율 (%)"
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -376,10 +367,9 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "(sum(rate(llm_calls_total{status=\"success\"}[5m])) / sum(rate(llm_calls_total[5m]))) * 100",
+          "expr": "(sum(rate(llm_calls_total{status=\"success\"}[1m])) / sum(rate(llm_calls_total[1m]))) * 100",
           "refId": "A"
         }
       ],
@@ -389,8 +379,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -517,46 +506,33 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(rate(http_requests_total[5m]))",
+          "expr": "sum(rate(http_requests_total[1m]))",
           "legendFormat": "HTTP 요청",
           "refId": "A"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(rate(dialogue_sessions_total[5m]))",
+          "expr": "sum(increase(dialogue_sessions_total[10m]))",
           "legendFormat": "세션 시작",
           "refId": "B"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(rate(dialogue_completions_total[5m]))",
+          "expr": "sum(increase(dialogue_completions_total[10m]))",
           "legendFormat": "세션 완료",
           "refId": "C"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "(sum(rate(dialogue_completions_total[5m])) / sum(rate(dialogue_sessions_total[5m]))) * 100",
-          "legendFormat": "세션 완료율 (%)",
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(rate(llm_calls_total[5m]))",
+          "expr": "sum(rate(llm_calls_total[1m]))",
           "legendFormat": "LLM 호출",
           "refId": "D"
         }
@@ -566,8 +542,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -645,28 +620,25 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
           "legendFormat": "HTTP 응답시간 (p95)",
           "refId": "A"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(retrieval_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(retrieval_duration_seconds_bucket[1m])) by (le))",
           "legendFormat": "증거 검색 (p95)",
           "refId": "B"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(llm_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(llm_duration_seconds_bucket[1m])) by (le))",
           "legendFormat": "LLM 응답시간 (p95)",
           "refId": "C"
         }
@@ -676,8 +648,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -752,10 +723,9 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(rate(http_requests_total[5m])) by (endpoint)",
+          "expr": "sum(rate(http_requests_total[1m])) by (endpoint)",
           "legendFormat": "{{endpoint}}",
           "refId": "A"
         }
@@ -765,8 +735,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -841,10 +810,9 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(rate(dialogue_sessions_total[5m])) by (category)",
+          "expr": "sum(increase(dialogue_sessions_total[10m])) by (category)",
           "legendFormat": "{{category}}",
           "refId": "A"
         }
@@ -854,8 +822,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -933,28 +900,25 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(increase(dialogue_sessions_total[1h]))",
+          "expr": "sum(increase(dialogue_sessions_total[10m]))",
           "legendFormat": "세션 시작 (기준)",
           "refId": "A"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(increase(dialogue_turns_total{is_final=\"false\"}[1h]))",
+          "expr": "sum(increase(dialogue_turns_total{is_final=\"false\"}[10m]))",
           "legendFormat": "중간 턴 요청",
           "refId": "B"
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
-          "expr": "sum(increase(dialogue_completions_total[1h]))",
+          "expr": "sum(increase(dialogue_completions_total[10m]))",
           "legendFormat": "세션 완료",
           "refId": "C"
         }
@@ -965,8 +929,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -1082,8 +1045,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "((sum(increase(user_journey_stage_total{stage=\"url_input\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"url_input\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"url_input\",status=\"start\"}[1h]))) * 100",
           "legendFormat": "1. 상품 URL 입력 후 이탈률",
@@ -1091,8 +1053,7 @@
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "((sum(increase(user_journey_stage_total{stage=\"review_collection\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"review_collection\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"review_collection\",status=\"start\"}[1h]))) * 100",
           "legendFormat": "2. 부정 리뷰 수집 후 이탈률",
@@ -1100,8 +1061,7 @@
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "((sum(increase(user_journey_stage_total{stage=\"ai_analysis\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"ai_analysis\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"ai_analysis\",status=\"start\"}[1h]))) * 100",
           "legendFormat": "3. AI 분석 후 이탈률",
@@ -1109,8 +1069,7 @@
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "((sum(increase(user_journey_stage_total{stage=\"regret_summary\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"regret_summary\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"regret_summary\",status=\"start\"}[1h]))) * 100",
           "legendFormat": "4. 후회 포인트 AI 요약 후 이탈률",
@@ -1118,8 +1077,7 @@
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "((sum(increase(user_journey_stage_total{stage=\"user_question\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"user_question\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"user_question\",status=\"start\"}[1h]))) * 100",
           "legendFormat": "5. 사용자 질문 후 이탈률",
@@ -1127,8 +1085,7 @@
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "((sum(increase(user_journey_stage_total{stage=\"ai_answer\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"ai_answer\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"ai_answer\",status=\"start\"}[1h]))) * 100",
           "legendFormat": "6. 리뷰 기반 AI 답변 후 이탈률",
@@ -1141,8 +1098,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -1220,8 +1176,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "sum(increase(user_journey_stage_total{status=\"start\"}[1h])) by (stage)",
           "legendFormat": "{{stage}} 시작",
@@ -1229,8 +1184,7 @@
         },
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "prometheus"
           },
           "expr": "sum(increase(user_journey_stage_total{status=\"complete\"}[1h])) by (stage)",
           "legendFormat": "{{stage}} 완료",

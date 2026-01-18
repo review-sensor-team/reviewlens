@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from ...services.review_service import ReviewService
 from ...core.settings import settings
+from ...infra.observability.metrics import dialogue_turns_total, track_errors
 
 logger = logging.getLogger("api.routers.review")
 
@@ -78,6 +79,7 @@ class AnswerQuestionRequest(BaseModel):
 # === API Endpoints ===
 
 @router.post("/collect", response_model=CollectReviewsResponse)
+@track_errors(error_type='api_error', component='collect_reviews')
 async def collect_reviews(
     request: CollectReviewsRequest,
     review_service: ReviewService = Depends(get_review_service)
@@ -110,6 +112,7 @@ async def collect_reviews(
 
 
 @router.post("/analyze", response_model=AnalyzeReviewsResponse)
+@track_errors(error_type='api_error', component='analyze_reviews')
 async def analyze_reviews(
     request: AnalyzeReviewsRequest,
     review_service: ReviewService = Depends(get_review_service)
@@ -200,6 +203,7 @@ async def get_app_config():
 
 
 @router.post("/analyze-product")
+@track_errors(error_type='api_error', component='analyze_product')
 async def analyze_product(
     product_name: str,
     service: ReviewService = Depends(get_review_service)
@@ -326,6 +330,7 @@ async def analyze_product(
 
 
 @router.get("/factor-reviews/{session_id}/{factor_key}")
+@track_errors(error_type='api_error', component='get_factor_reviews')
 async def get_factor_reviews(
     session_id: str,
     factor_key: str,
@@ -487,6 +492,7 @@ async def get_factor_reviews(
 
 
 @router.post("/answer-question/{session_id}")
+@track_errors(error_type='api_error', component='answer_question')
 async def answer_question(
     session_id: str,
     request: AnswerQuestionRequest,
@@ -542,6 +548,10 @@ async def answer_question(
         
         turn_count = len(session_data["question_history"])
         logger.info(f"질문 히스토리: {turn_count}턴")
+        
+        # 메트릭 기록: 대화 턴 증가
+        category = session_data.get("category", "unknown")
+        dialogue_turns_total.labels(category=category).inc()
         
         # 3. 수렴 조건 체크 (v1: MIN_FINALIZE_TURNS=3, MIN_STABILITY_HITS=2)
         from ...core.settings import settings
