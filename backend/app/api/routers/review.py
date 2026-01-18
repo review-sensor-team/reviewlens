@@ -12,8 +12,8 @@ from pydantic import BaseModel
 
 from ...services.review_service import ReviewService
 from ...core.settings import settings
-from ...domain.reg.store import load_csvs, parse_factors
-from ...domain.dialogue.session import DialogueSession
+from ...adapters.persistence.reg.store import load_csvs, parse_factors
+from ...usecases.dialogue.session import DialogueSession
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ _review_service: Optional[ReviewService] = None
 _session_cache: dict = {}  # {session_id: {scored_df, factors, category, product_name}}
 
 # 공통 상수 import
-from ...domain.dialogue.constants import CATEGORY_FALLBACK_QUESTIONS, DEFAULT_FALLBACK_QUESTIONS
+from ...usecases.dialogue.constants import CATEGORY_FALLBACK_QUESTIONS, DEFAULT_FALLBACK_QUESTIONS
 
 
 def get_data_dir() -> Path:
@@ -658,8 +658,6 @@ async def analyze_reviews(
     logger.info(f"리뷰 분석 요청: product={request.product_id}, category={request.category}")
     
     try:
-        from ...domain.reg.store import load_csvs, parse_factors
-        
         # 1. 리뷰 수집
         collect_result = review_service.collect_reviews(
             product_id=request.product_id,

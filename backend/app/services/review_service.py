@@ -8,9 +8,9 @@ from ..infra.loaders import ReviewLoaderFactory
 from ..infra.storage.csv_storage import CSVStorage
 from ..infra.cache.review_cache import ReviewCache
 from ..infra.collectors.smartstore import SmartStoreCollector
-from ..domain.review.normalize import normalize_review, dedupe_reviews
-from ..domain.review.scoring import compute_review_factor_scores
-from ..domain.review.retrieval import retrieve_evidence_reviews
+from ..domain.rules.review.normalize import normalize_review, dedupe_reviews
+from ..domain.rules.review.scoring import compute_review_factor_scores
+from ..domain.rules.review.retrieval import retrieve_evidence_reviews
 from ..core.settings import settings
 
 logger = logging.getLogger(__name__)

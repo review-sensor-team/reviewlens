@@ -9,8 +9,8 @@ from typing import List, Tuple
 
 import pandas as pd
 
-# 정규화 함수는 domain/review/normalize.py에서 import
-from ..review.normalize import normalize_text as normalize
+# 정규화 함수는 domain/rules/review/normalize.py에서 import
+from ....domain.rules.review.normalize import normalize_text as normalize
 
 
 @dataclass

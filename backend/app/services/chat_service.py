@@ -35,7 +35,7 @@ class ChatService:
         Returns:
             세션 정보
         """
-        from ..domain.reg.store import load_csvs, parse_factors, parse_questions
+        from ..adapters.persistence.reg.store import load_csvs, parse_factors, parse_questions
         
         logger.info(f"세션 생성: {session_id} (category={category}, product={product_name})")
         
@@ -98,7 +98,7 @@ class ChatService:
         session.turn_count += 1
         
         # 1. 사용자 메시지에서 factor 점수 추출
-        from ..domain.review.normalize import normalize_text
+        from ..domain.rules.review.normalize import normalize_text
         norm_text = normalize_text(user_message)
         
         matched_factors = []

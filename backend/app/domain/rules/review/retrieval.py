@@ -11,7 +11,7 @@ import pandas as pd
 
 # Import from domain layer
 from .normalize import normalize_text as normalize
-from ..reg.store import Factor
+from ....adapters.persistence.reg.store import Factor
 
 logger = logging.getLogger(__name__)
 

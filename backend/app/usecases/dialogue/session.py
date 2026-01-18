@@ -12,10 +12,10 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import pandas as pd
 
-from ..reg.store import Factor, Question, load_csvs, parse_factors, parse_questions
-from ..review.scoring import compute_review_factor_scores
-from ..review.normalize import normalize_review, normalize_text
-from ..review.retrieval import retrieve_evidence_reviews
+from ...adapters.persistence.reg.store import Factor, Question, load_csvs, parse_factors, parse_questions
+from ...domain.rules.review.scoring import compute_review_factor_scores
+from ...domain.rules.review.normalize import normalize_review, normalize_text
+from...domain.rules.review.retrieval import retrieve_evidence_reviews
 from ...infra.observability.metrics import (
     dialogue_sessions_total,
     dialogue_turns_total,
