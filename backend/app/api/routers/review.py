@@ -742,11 +742,13 @@ async def get_app_config():
     Returns:
         - use_product_selection: 상품 선택 모드 사용 여부
         - mode: 'product_selection' 또는 'url_input'
+        - strategy_names: 전략 이름 한글 매핑
     """
     return {
         "success": True,
         "use_product_selection": settings.USE_PRODUCT_SELECTION,
-        "mode": "product_selection" if settings.USE_PRODUCT_SELECTION else "url_input"
+        "mode": "product_selection" if settings.USE_PRODUCT_SELECTION else "url_input",
+        "strategy_names": settings.STRATEGY_KOREAN_NAMES
     }
 
 

@@ -542,6 +542,35 @@ class DialogueSession:
             ],
         }
     
+    def _replace_factor_keys_with_display_names(self, summary_text: str) -> str:
+        """LLM 응답 JSON에서 factor_key를 display_name으로 교체
+        
+        Args:
+            summary_text: LLM의 JSON 응답 문자열
+            
+        Returns:
+            factor가 display_name으로 교체된 JSON 문자열
+        """
+        try:
+            import json
+            response_json = json.loads(summary_text)
+            
+            # key_findings의 factor를 display_name으로 교체
+            if "key_findings" in response_json and isinstance(response_json["key_findings"], list):
+                for finding in response_json["key_findings"]:
+                    if "factor_key" in finding:
+                        factor_key = finding["factor_key"]
+                        factor_obj = self.factors_map.get(factor_key)
+                        if factor_obj:
+                            display_name = getattr(factor_obj, "display_name", factor_key) or factor_key
+                            # factor 필드를 display_name으로 교체
+                            finding["factor"] = display_name
+            
+            return json.dumps(response_json, ensure_ascii=False)
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"[factor 교체 실패] {e} - 원본 응답 반환")
+            return summary_text
+
     def _build_frontend_context(self, top_factors: List[Tuple[str, float]], evidence: List[Dict], 
                                  llm_summary: Any, calculation_info: Dict) -> Dict:
         """프론트엔드용 LLM 컨텍스트 구성
@@ -592,17 +621,25 @@ class DialogueSession:
         
         # llm_summary가 리스트면 다중 전략, 튜플이면 단일 전략
         if isinstance(llm_summary, list):
-            # 다중 전략: llm_summaries 배열로 반환
-            context["llm_summaries"] = llm_summary
-            context["llm_summary"] = llm_summary[0]["summary"] if llm_summary else ""  # 호환성
+            # 다중 전략: llm_summaries 배열로 반환 (각 summary의 factor 교체)
+            processed_summaries = []
+            for item in llm_summary:
+                processed_item = item.copy()
+                if "summary" in processed_item:
+                    processed_item["summary"] = self._replace_factor_keys_with_display_names(processed_item["summary"])
+                processed_summaries.append(processed_item)
+            
+            context["llm_summaries"] = processed_summaries
+            context["llm_summary"] = processed_summaries[0]["summary"] if processed_summaries else ""  # 호환성
         elif isinstance(llm_summary, tuple):
-            # 단일 전략: (요약, 파일명) 튜플
+            # 단일 전략: (요약, 파일명) 튜플 - factor 교체
             summary_text, response_file = llm_summary
-            context["llm_summary"] = summary_text
+            processed_summary = self._replace_factor_keys_with_display_names(summary_text)
+            context["llm_summary"] = processed_summary
             context["response_file"] = response_file
         else:
-            # 호환성 유지 (str만 전달된 경우)
-            context["llm_summary"] = llm_summary
+            # 호환성 유지 (str만 전달된 경우) - factor 교체
+            context["llm_summary"] = self._replace_factor_keys_with_display_names(llm_summary)
         
         return context
 

@@ -27,7 +27,16 @@ class Settings(BaseSettings):
     CLAUDE_MODEL: Optional[str] = None
     
     # Prompt 전략 설정 (.env에서 읽어옴)
-    PROMPT_STRATEGY: str = "detailed,friendly"  # default|concise|detailed|friendly 또는 쉼표로 구분하여 여러 개
+    PROMPT_STRATEGY: str = "concise,custom"  # default,concise,detailed,friendly,custom 쉼표로 구분하여 여러 개
+    
+    # 전략 이름 한글 매핑
+    STRATEGY_KOREAN_NAMES: Dict[str, str] = {
+        "default": "기본형",
+        "concise": "간결형",
+        "detailed": "상세형",
+        "friendly": "친근형",
+        "custom": "맞춤형"
+    }
     
     def get_prompt_strategies(self) -> List[str]:
         """PROMPT_STRATEGY를 파싱하여 전략 리스트 반환
