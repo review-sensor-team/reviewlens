@@ -654,6 +654,8 @@ const send = async () => {
             const htmlContent = convertMarkdownToHtml(markdown)
             pushBot(htmlContent, null, null, null, 'analyze')
             
+            console.log(`[별점 요청] strategy=${strategyName}, responseFile=${responseFile}`)
+            
             // 각 전략별 별점 요청
             pushBot(
               `"${strategyName}" 스타일 분석에 만족하셨나요? 별점을 남겨주세요!`, 
@@ -668,6 +670,8 @@ const send = async () => {
             pushBot(htmlContent, null, null, null, 'analyze')
           }
         }
+        
+        console.log('[다중 전략] 모든 전략 처리 완료')
         
         // 다중 전략 완료 후 다음 분석 안내
         waitingForNewAnalysisResponse.value = true
@@ -1026,12 +1030,15 @@ const selectOption = async (opt) => {
             const htmlContent = convertMarkdownToHtml(markdown)
             pushBot(htmlContent, null, null, null, 'analyze')
             
+            console.log(`[별점 요청-selectOption] strategy=${strategyName}, responseFile=${responseFile}`)
+            
             // 각 전략별 별점 요청
             pushBot(
               `"${strategyName}" 스타일 분석에 만족하셨나요? 별점을 남겨주세요!`, 
               null, null, null, null, null, null, null, 
               true,  // showRating
-              responseFile
+              responseFile,
+              strategyName  // strategy
             )
           } catch (e) {
             console.error(`[${strategyName}] 분석 결과 파싱 실패:`, e)
@@ -1039,6 +1046,8 @@ const selectOption = async (opt) => {
             pushBot(htmlContent, null, null, null, 'analyze')
           }
         }
+        
+        console.log('[다중 전략-selectOption] 모든 전략 처리 완료')
         
         // 다중 전략 완료 후 다음 분석 안내
         waitingForNewAnalysisResponse.value = true
