@@ -679,18 +679,21 @@ async def answer_question(
                 
                 # next_factor_hint가 있으면 해당 factor의 질문 찾기
                 if next_factor_key:
-                    # 세션의 factors에서 next_factor_key에 해당하는 factor 찾기
-                    next_factor = next((f for f in session_data.get("factors", []) if f.factor_key == next_factor_key), None)
+                    # questions_df에서 next_factor_key로 직접 찾기 (이미 factor_key 컬럼 있음)
+                    next_factor_questions = questions_df[questions_df['factor_key'] == next_factor_key]
                     
-                    if next_factor:
-                        # 다음 factor의 질문 중 아직 묻지 않은 질문 찾기
-                        next_factor_questions = questions_df[questions_df['factor_id'] == next_factor.factor_id]
+                    if len(next_factor_questions) > 0:
+                        # 아직 묻지 않은 질문만 필터링
                         next_unasked = next_factor_questions[
                             (~next_factor_questions['question_id'].isin(asked_ids)) &
                             (~next_factor_questions['question_text'].isin(asked_texts))
                         ]
                         
-                        logger.info(f"다음 factor '{next_factor_key}' (factor_id={next_factor.factor_id}) 질문: {len(next_factor_questions)}개, 미질문: {len(next_unasked)}개")
+                        next_factor_id = int(next_factor_questions.iloc[0]['factor_id'])
+                        logger.info(f"다음 factor '{next_factor_key}' (factor_id={next_factor_id}) 질문: {len(next_factor_questions)}개, 미질문: {len(next_unasked)}개")
+                        
+                        print(f"[DEBUG] next_unasked 길이: {len(next_unasked)}")
+                        print(f"[DEBUG] next_question 할당 전: {next_question}")
                         
                         if len(next_unasked) > 0:
                             # 다음 factor의 첫 번째 질문 선택
@@ -703,100 +706,105 @@ async def answer_question(
                                 "next_factor_hint": next_q.get('next_factor_hint', ''),
                                 "factor_key": next_factor_key
                             }
+                            print(f"[DEBUG] next_question 할당 후: {next_question}")
                             logger.info(f"다음 factor '{next_factor_key}'로 이동: question_id={next_q['question_id']}")
+                        else:
+                            logger.info(f"다음 factor '{next_factor_key}'의 질문도 모두 소진됨")
+                    else:
+                        logger.info(f"CSV에서 next_factor_key '{next_factor_key}'를 찾을 수 없음")
                 
                 # next_factor_hint가 없거나 다음 factor에도 질문이 없으면 fallback 질문 사용
                 if next_question is None:
                     logger.info(f"다음 factor 없음 또는 질문 소진 - fallback 질문 사용")
                     
                     # 카테고리별 fallback 질문
-                category = session_data.get("category", "")
-                category_questions = {
-                    'mattress': [
-                        "평소 어떤 자세로 주로 주무시나요? (옆으로/바로/엎드려)",
-                        "현재 사용 중인 매트리스에서 가장 불편한 점이 무엇인가요?",
-                        "매트리스 구매 시 가장 중요하게 생각하는 요소는 무엇인가요? (지지력/푹신함/통풍/내구성 등)"
-                    ],
-                    'chair': [
-                        "하루에 몇 시간 정도 앉아서 작업하시나요?",
-                        "현재 의자에서 가장 불편한 부위는 어디인가요? (허리/목/엉덩이/팔걸이 등)",
-                        "의자 구매 시 가장 중요하게 생각하는 요소는 무엇인가요? (쿠션/등받이/높이조절/내구성 등)"
-                    ],
-                    'bedding_robot': [
-                        "주로 어떤 종류의 침구류를 청소하실 예정인가요? (이불/베개/매트리스 등)",
-                        "알레르기나 천식이 있으신가요?",
-                        "청소 주기는 얼마나 자주 하실 계획인가요?"
-                    ],
-                    'bedding_cleaner': [
-                        "주로 어떤 종류의 침구류를 청소하실 예정인가요? (이불/베개/매트리스 등)",
-                        "알레르기나 천식이 있으신가요?",
-                        "침구청소기 구매 시 가장 중요한 요소는 무엇인가요? (흡입력/무게/소음/UV 등)"
-                    ],
-                    'bookshelf': [
-                        "어느 위치에 설치 예정이신가요? (거실/방/서재 등)",
-                        "주로 어떤 물건을 보관하실 예정인가요? (책/소품/서류 등)",
-                        "책장 구매 시 가장 중요한 요소는 무엇인가요? (수납력/디자인/안정성/조립 편의성 등)"
-                    ],
-                    'coffee_machine': [
-                        "하루에 커피를 몇 잔 정도 드시나요?",
-                        "어떤 종류의 커피를 선호하시나요? (에스프레소/아메리카노/라떼 등)",
-                        "커피머신 구매 시 가장 중요한 요소는 무엇인가요? (맛/편의성/세척/소음 등)"
-                    ],
-                    'desk': [
-                        "주로 어떤 작업을 하실 예정인가요? (컴퓨터 작업/공부/그림 등)",
-                        "책상을 놓을 공간의 크기는 어느 정도인가요?",
-                        "책상 구매 시 가장 중요한 요소는 무엇인가요? (크기/수납/높이조절/내구성 등)"
-                    ],
-                    'earbuds': [
-                        "주로 어떤 상황에서 사용하실 예정인가요? (출퇴근/운동/업무 등)",
-                        "귀 모양이 특이하거나 이어폰이 잘 빠지는 편인가요?",
-                        "이어폰 구매 시 가장 중요한 요소는 무엇인가요? (음질/착용감/배터리/노이즈캔슬링 등)"
-                    ],
-                    'humidifier': [
-                        "사용하실 공간의 크기는 어느 정도인가요?",
-                        "소음에 민감하신 편인가요? (수면 중 사용 여부)",
-                        "가습기 구매 시 가장 중요한 요소는 무엇인가요? (가습량/소음/세척편의성/디자인 등)"
-                    ],
-                    'induction': [
-                        "주로 어떤 요리를 하시나요? (볶음/찌개/구이 등)",
-                        "인덕션 사용 경험이 있으신가요?",
-                        "인덕션 구매 시 가장 중요한 요소는 무엇인가요? (화력/소음/세척/안전성 등)"
-                    ]
-                }
-                
-                # 기본 fallback 질문
-                default_fallbacks = [
-                    "이 제품을 주로 어떤 상황에서 사용하실 예정인가요?",
-                    "비슷한 제품을 사용하면서 불편했던 점이 있다면 무엇인가요?",
-                    "제품 구매 시 가장 중요하게 생각하는 요소는 무엇인가요?"
-                ]
-                
-                fallback_questions = category_questions.get(category, default_fallbacks)
-                
-                # 이미 물어본 fallback 질문 추적 (세션에 저장된 리스트 사용)
-                if "asked_fallback_questions" not in session_data:
-                    session_data["asked_fallback_questions"] = []
-                
-                asked_fallbacks = set(session_data["asked_fallback_questions"])
-                
-                # 아직 묻지 않은 fallback 질문 찾기
-                unasked_fallbacks = [q for q in fallback_questions if q not in asked_fallbacks]
-                
-                if unasked_fallbacks:
-                    # 랜덤하게 선택
-                    fb_q = random.choice(unasked_fallbacks)
-                    next_question = {
-                        "question_id": None,  # fallback은 ID 없음
-                        "question_text": fb_q,
-                        "answer_type": "no_choice",
-                        "choices": [],
-                        "next_factor_hint": "",
-                        "factor_key": current_factor_key,
-                        "is_fallback": True  # fallback 표시
+                    category = session_data.get("category", "")
+                    category_questions = {
+                        'mattress': [
+                            "평소 어떤 자세로 주로 주무시나요? (옆으로/바로/엎드려)",
+                            "현재 사용 중인 매트리스에서 가장 불편한 점이 무엇인가요?",
+                            "매트리스 구매 시 가장 중요하게 생각하는 요소는 무엇인가요? (지지력/푹신함/통풍/내구성 등)"
+                        ],
+                        'chair': [
+                            "하루에 몇 시간 정도 앉아서 작업하시나요?",
+                            "현재 의자에서 가장 불편한 부위는 어디인가요? (허리/목/엉덩이/팔걸이 등)",
+                            "의자 구매 시 가장 중요하게 생각하는 요소는 무엇인가요? (쿠션/등받이/높이조절/내구성 등)"
+                        ],
+                        'bedding_robot': [
+                            "주로 어떤 종류의 침구류를 청소하실 예정인가요? (이불/베개/매트리스 등)",
+                            "알레르기나 천식이 있으신가요?",
+                            "청소 주기는 얼마나 자주 하실 계획인가요?"
+                        ],
+                        'bedding_cleaner': [
+                            "주로 어떤 종류의 침구류를 청소하실 예정인가요? (이불/베개/매트리스 등)",
+                            "알레르기나 천식이 있으신가요?",
+                            "침구청소기 구매 시 가장 중요한 요소는 무엇인가요? (흡입력/무게/소음/UV 등)"
+                        ],
+                        'bookshelf': [
+                            "어느 위치에 설치 예정이신가요? (거실/방/서재 등)",
+                            "주로 어떤 물건을 보관하실 예정인가요? (책/소품/서류 등)",
+                            "책장 구매 시 가장 중요한 요소는 무엇인가요? (수납력/디자인/안정성/조립 편의성 등)"
+                        ],
+                        'coffee_machine': [
+                            "하루에 커피를 몇 잔 정도 드시나요?",
+                            "어떤 종류의 커피를 선호하시나요? (에스프레소/아메리카노/라떼 등)",
+                            "커피머신 구매 시 가장 중요한 요소는 무엇인가요? (맛/편의성/세척/소음 등)"
+                        ],
+                        'desk': [
+                            "주로 어떤 작업을 하실 예정인가요? (컴퓨터 작업/공부/그림 등)",
+                            "책상을 놓을 공간의 크기는 어느 정도인가요?",
+                            "책상 구매 시 가장 중요한 요소는 무엇인가요? (크기/수납/높이조절/내구성 등)"
+                        ],
+                        'earbuds': [
+                            "주로 어떤 상황에서 사용하실 예정인가요? (출퇴근/운동/업무 등)",
+                            "귀 모양이 특이하거나 이어폰이 잘 빠지는 편인가요?",
+                            "이어폰 구매 시 가장 중요한 요소는 무엇인가요? (음질/착용감/배터리/노이즈캔슬링 등)"
+                        ],
+                        'humidifier': [
+                            "사용하실 공간의 크기는 어느 정도인가요?",
+                            "소음에 민감하신 편인가요? (수면 중 사용 여부)",
+                            "가습기 구매 시 가장 중요한 요소는 무엇인가요? (가습량/소음/세척편의성/디자인 등)"
+                        ],
+                        'induction': [
+                            "주로 어떤 요리를 하시나요? (볶음/찌개/구이 등)",
+                            "인덕션 사용 경험이 있으신가요?",
+                            "인덕션 구매 시 가장 중요한 요소는 무엇인가요? (화력/소음/세척/안전성 등)"
+                        ]
                     }
-                    # 세션에 fallback 질문 기록
-                    session_data["asked_fallback_questions"].append(fb_q)
-                    logger.info(f"Fallback 질문 랜덤 선택: {fb_q}")
+                    
+                    # 기본 fallback 질문
+                    default_fallbacks = [
+                        "이 제품을 주로 어떤 상황에서 사용하실 예정인가요?",
+                        "비슷한 제품을 사용하면서 불편했던 점이 있다면 무엇인가요?",
+                        "제품 구매 시 가장 중요하게 생각하는 요소는 무엇인가요?"
+                    ]
+                    
+                    fallback_questions = category_questions.get(category, default_fallbacks)
+                    
+                    # 이미 물어본 fallback 질문 추적 (세션에 저장된 리스트 사용)
+                    if "asked_fallback_questions" not in session_data:
+                        session_data["asked_fallback_questions"] = []
+                    
+                    asked_fallbacks = set(session_data["asked_fallback_questions"])
+                    
+                    # 아직 묻지 않은 fallback 질문 찾기
+                    unasked_fallbacks = [q for q in fallback_questions if q not in asked_fallbacks]
+                    
+                    if unasked_fallbacks:
+                        # 랜덤하게 선택
+                        fb_q = random.choice(unasked_fallbacks)
+                        next_question = {
+                            "question_id": None,  # fallback은 ID 없음
+                            "question_text": fb_q,
+                            "answer_type": "no_choice",
+                            "choices": [],
+                            "next_factor_hint": "",
+                            "factor_key": current_factor_key,
+                            "is_fallback": True  # fallback 표시
+                        }
+                        # 세션에 fallback 질문 기록
+                        session_data["asked_fallback_questions"].append(fb_q)
+                        logger.info(f"Fallback 질문 랜덤 선택: {fb_q}")
             
             if next_question:
                 # 세션에 현재 질문 저장 (다음 답변 시 히스토리에 추가하기 위해)
