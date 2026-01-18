@@ -13,7 +13,7 @@ from ...services.prompt_service import PromptService
 from ...services.review_service import ReviewService
 from ...infra.observability.metrics import track_errors
 
-logger = logging.getLogger("api.routers.chat")
+logger = logging.getLogger(__name__)
 
 # 라우터 생성
 router = APIRouter(prefix="/api/v2/chat", tags=["chat"])

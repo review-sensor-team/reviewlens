@@ -8,7 +8,7 @@ from .json_review_loader import JSONReviewLoader
 from .csv_review_loader import CSVReviewLoader
 from .url_review_loader import URLReviewLoader
 
-logger = logging.getLogger("infra.loaders.factory")
+logger = logging.getLogger(__name__)
 
 
 class ReviewLoaderFactory:

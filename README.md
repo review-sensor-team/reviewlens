@@ -1,7 +1,7 @@
 # ReviewLens V2
 ### 후회를 줄이기 위한 대화형 리뷰 분석 챗봇
 
-> **V2 업데이트 (2026-01-17)**: Clean Architecture 적용, 3-5턴 대화 플로우 완성
+> **V2 업데이트 (2026-01-18)**: Clean Architecture 재구성 완료, 코드 품질 개선
 
 ---
 
@@ -14,11 +14,25 @@
 
 ## 주요 변경사항 (V2)
 
-### ✅ Clean Architecture 적용
-- **Domain Layer**: 비즈니스 로직 (review, dialogue, reg)
-- **Infrastructure Layer**: 외부 연동 (observability, session)
+### ✅ Clean Architecture 재구성 (2026-01-18)
+- **Domain Layer**:
+  - `domain/entities/` - 순수 도메인 엔티티 (향후 확장)
+  - `domain/rules/review/` - 도메인 비즈니스 규칙 (normalize, scoring, retrieval)
+- **Use Cases Layer**:
+  - `usecases/dialogue/` - DialogueSession (3-5턴 대화 로직)
+- **Adapters Layer**:
+  - `adapters/persistence/reg/` - Factor/Question CSV 로딩
+- **Infrastructure Layer**: 외부 연동 (observability, collectors, storage)
 - **API Layer**: REST 엔드포인트 (v2)
-- **332KB 중복 코드 제거**: legacy 폴더로 이동
+
+### ✅ 코드 품질 개선
+- **함수 리팩토링**: 14개 대형 함수 분리 (평균 60+ 라인 → 20-30 라인)
+  - DialogueSession: 7개 함수 (66% 코드 감소)
+  - ReviewService: 3개 함수 (48% 코드 감소)
+  - review.py: 4개 함수 (46% 코드 감소)
+- **중복 코드 제거**: 64줄의 중복 상수를 constants.py로 통합
+- **Import 최적화**: 모든 내부 import를 파일 상단으로 이동
+- **Legacy 정리**: 332KB 미사용 코드를 legacy 폴더로 이동
 
 ### ✅ 3-5턴 대화 플로우
 - 질문별 question_id 추적
@@ -26,7 +40,7 @@
 - Fallback 질문 시스템 (카테고리별 10개)
 - LLM 분석 통합 (GPT-4o-mini)
 
-### ✅ API 구조 개선
+### ✅ API 구조
 - `/api/v2/reviews/*` - V2 Clean Architecture 엔드포인트
 - 세션 기반 상태 관리 (in-memory cache)
 - 증거 리뷰 추출 최적화
@@ -158,7 +172,13 @@ backend/
 │   ├── llm_factory.py
 │   ├── llm_openai.py        # GPT-4o-mini
 │   ├── llm_claude.py
-│   └── llm_gemini.py
+│   ├── llm_gemini.py
+│   ├── prompt_factory.py    # 🆕 프롬프트 팩토리 패턴
+│   └── prompts/             # 🆕 YAML 템플릿 (default, concise, detailed, friendly)
+│       ├── default.yaml
+│       ├── concise.yaml
+│       ├── detailed.yaml
+│       └── friendly.yaml
 ├── data/
 │   ├── factor/
 │   │   └── reg_factor_v4.csv    # 10개 상품, 100개 factors
@@ -225,11 +245,10 @@ frontend/
 
 ### 🚧 진행 중
 - UI/UX 디자인 적용
-- LLM API 통합
+- 프롬프트 A/B 테스트
 
 ### 📋 계획 중
 - 팩터와 질문 데이터 자동 생성(백그라운드 잡)
-- LLM 프롬프트 최적화
 - 벡터 기반 후회 리뷰 추출
 - 멀티 카테고리 확장
 
@@ -320,6 +339,178 @@ docker-compose -f docker-compose.monitoring.yml up -d
   - LLM API 성능 모니터링
   - 파이프라인 단계별 latency 측정
 - ✅ **CORS 다중 포트 지원** (5173, 5174, 3000)
+
+- ✅ **LLM 프롬프트 팩토리 패턴**
+  - YAML 기반 프롬프트 템플릿 (4가지 전략)
+  - 환경 변수로 쉬운 전환 (PROMPT_STRATEGY)
+  - 커스텀 템플릿 추가 가능
+  - A/B 테스트 지원
+- ✅ **다중 프롬프트 전략**
+  - 쉼표로 구분하여 여러 전략 동시 실행
+  - 예: `PROMPT_STRATEGY=default,friendly`
+  - 각 전략별 LLM 응답 수신
+  - 단일/다중 자동 감지
+
+---
+
+## LLM 프롬프트 실험하기 🆕
+
+프롬프트를 코드 변경 없이 자유롭게 실험할 수 있습니다!
+
+### 단일 전략 선택
+
+`.env` 파일:
+```bash
+# 전문적인 톤 (기본)
+PROMPT_STRATEGY=default
+
+# 짧고 간결
+PROMPT_STRATEGY=concise
+
+# 상세한 분석
+PROMPT_STRATEGY=detailed
+
+# 친근한 MZ 스타일
+PROMPT_STRATEGY=friendly
+```
+
+### 다중 전략 (동시 실행) 🆕
+
+```bash
+# 기본 + 친근한 스타일 동시에
+PROMPT_STRATEGY=default,friendly
+
+# 간결 + 상세 비교
+PROMPT_STRATEGY=concise,detailed
+
+# 3개 전략 A/B/C 테스트
+PROMPT_STRATEGY=default,concise,friendly
+```
+
+**주의**: 전략 개수만큼 LLM API 호출 → 비용 증가!
+
+### 응답 형식
+
+**단일 전략**:
+```json
+{"llm_summary": "{JSON 분석 결과}"}
+```
+
+**다중 전략**:
+```json
+{
+  "llm_summaries": [
+    {"strategy": "default", "summary": "{...}"},
+    {"strategy": "friendly", "summary": "{...}"}
+  ],
+  "llm_summary": "{첫 번째 전략}"  // 호환성
+}
+```
+
+### 커스텀 프롬프트 만들기
+
+`backend/llm/prompts/my_style.yaml` 생성:
+```yaml
+name: "my_style"
+description: "나만의 프롬프트 스타일"
+system_prompt: |
+  여기에 원하는 시스템 프롬프트 작성
+user_prompt_template: |
+  제품: {product_name}
+  ...
+```
+
+사용:
+```bash
+PROMPT_STRATEGY=my_style
+# 또는 다중으로
+PROMPT_STRATEGY=default,my_style
+```
+
+📚 **상세 가이드**: 
+- [PROMPT_FACTORY_GUIDE.md](docs/PROMPT_FACTORY_GUIDE.md) - 프롬프트 팩토리 패턴
+- [MULTI_STRATEGY_GUIDE.md](docs/MULTI_STRATEGY_GUIDE.md) - 다중 전략 사용법
+- [LLM_RATING_GUIDE.md](docs/LLM_RATING_GUIDE.md) - LLM 응답 평가 시스템 🆕
+
+---
+
+## LLM 응답 평가 시스템 🆕
+
+### 개요
+
+사용자가 LLM 응답에 별점(1-5)을 매길 수 있습니다. A/B 테스트를 통해 최적의 프롬프트 전략을 데이터 기반으로 선택할 수 있습니다.
+
+### API 사용
+
+```bash
+# 1. 제품 분석 후 응답 파일명 확인
+curl -X POST http://localhost:8000/api/v2/reviews/analyze-product \
+  -H "Content-Type: application/json" \
+  -d '{"product_url": "...", "category_slug": "earbuds"}'
+
+# 응답: {"analysis": {"response_file": "llm_response_20260118_123456.json"}}
+
+# 2. 별점 평가
+curl -X POST http://localhost:8000/api/v2/reviews/rate-response \
+  -H "Content-Type: application/json" \
+  -d '{
+    "response_file": "llm_response_20260118_123456.json",
+    "rating": 5,
+    "feedback": "매우 명확하고 유용했습니다"
+  }'
+```
+
+### 다중 전략 평가
+
+```bash
+# 전략별로 각각 평가
+PROMPT_STRATEGY=default,friendly,concise
+
+# 각 전략의 response_file에 대해 평가
+curl -X POST .../rate-response -d '{
+  "response_file": "llm_response_default_20260118_123456.json",
+  "rating": 4,
+  "strategy": "default"
+}'
+
+curl -X POST .../rate-response -d '{
+  "response_file": "llm_response_friendly_20260118_123457.json",
+  "rating": 5,
+  "strategy": "friendly"
+}'
+```
+
+### 평가 데이터 분석
+
+```bash
+# 전략별 통계 분석
+python scripts/analyze_ratings.py
+```
+
+**출력 예시:**
+```
+📊 LLM 응답 평가 통계
+======================================================================
+
+🎯 전략: default
+   평가 수:        20
+   평균 별점:      4.15 ⭐
+   최고 별점:      5
+   최저 별점:      3
+   피드백 수:      18
+
+🎯 전략: friendly
+   평가 수:        18
+   평균 별점:      4.56 ⭐
+   최고 별점:      5
+   최저 별점:      4
+   피드백 수:      15
+
+✅ 추천 전략: friendly
+   평균 별점: 4.56 ⭐
+```
+
+**상세 가이드**: [LLM_RATING_GUIDE.md](docs/LLM_RATING_GUIDE.md)
 
 ---
 

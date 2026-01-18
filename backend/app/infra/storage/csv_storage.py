@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 from datetime import datetime
 
-logger = logging.getLogger("infra.storage.csv")
+logger = logging.getLogger(__name__)
 
 
 class CSVStorage:
