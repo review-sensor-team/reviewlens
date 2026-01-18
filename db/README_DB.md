@@ -4,7 +4,14 @@
 DB는 **Docker 기반 PostgreSQL + Redis**로 구성되며, **GUI 없이 스크립트 중심 운영**을 전제로 한다.
 
 ---
-## 0. Quick smoke test (DB end-to-end)
+## Prerequisites
+
+- Docker Desktop (WSL2 backend)
+- Python 3.10+
+
+
+---
+## Quick smoke test (DB end-to-end)
 
 아래 3단계로 DB 파이프라인이 정상 동작하는지 확인할 수 있습니다.
 
@@ -18,6 +25,7 @@ docker compose -f docker-compose.db.yml up -d
 
 # 3) DB export / backup 결과 생성
 .\.venv\Scripts\python.exe db\scripts\export_db_artifacts.py
+
 
 ---
 
