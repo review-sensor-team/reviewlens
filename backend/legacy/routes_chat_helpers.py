@@ -9,7 +9,7 @@ from ..schemas.responses import CollectReviewsResponse, Review, FactorMatch
 from ..session.session_store import SessionStore
 from backend.app.core.settings import settings
 
-logger = logging.getLogger("api.chat")
+logger = logging.getLogger(__name__)
 
 # 상수 (settings에서 가져옴)
 TOP_FACTORS_LIMIT = settings.DIALOGUE_TOP_FACTORS_LIMIT

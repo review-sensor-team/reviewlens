@@ -109,8 +109,8 @@ def create_app() -> FastAPI:
     )
 
     # Register routers - V2 Clean Architecture only
-    from .api.routers import health, review
-    app.include_router(health.router, tags=["monitoring"])
+    from .api.routers import metrics, review
+    app.include_router(metrics.router, tags=["monitoring"])
     app.include_router(review.router, tags=["reviews"])
     
     logger.info("API 라우터 등록 완료")
