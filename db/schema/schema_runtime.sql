@@ -4,18 +4,22 @@
 -- IMPORTANT:
 --   Apply schema_reference.sql BEFORE this file.
 --   This runtime schema references:
---     - ref_products(category)
+--     - ref_products(product_no)
 --     - ref_questions(question_id)
 -- =========================================================
 
 -- ---------------------------------------------------------
 -- 1) Dialogue Sessions
--- category_key is the same stable key as ref_products.category
+-- product_no is the stable FK to ref_products(product_no)
+-- category_key is optional (snapshot/compat); NOT used as FK.
 -- ---------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dialogue_sessions (
   session_id         UUID PRIMARY KEY,
 
-  category_key       TEXT NOT NULL REFERENCES ref_products(category) ON DELETE RESTRICT,
+  product_no         INT NOT NULL REFERENCES ref_products(product_no) ON DELETE RESTRICT,
+
+  -- Optional snapshot/compat field (do NOT FK this)
+  category_key       TEXT,
 
   provider           TEXT,
   model_name         TEXT,
@@ -31,8 +35,14 @@ CREATE TABLE IF NOT EXISTS dialogue_sessions (
   llm_context_final  JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_category_started_at
-  ON dialogue_sessions(category_key, started_at DESC);
+-- Query patterns:
+-- - recent sessions per product
+-- - funnels/metrics per product
+CREATE INDEX IF NOT EXISTS idx_sessions_product_started_at
+  ON dialogue_sessions(product_no, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_started_at
+  ON dialogue_sessions(started_at DESC);
 
 -- ---------------------------------------------------------
 -- 2) Dialogue Turns
@@ -59,6 +69,10 @@ CREATE TABLE IF NOT EXISTS dialogue_turns (
 CREATE INDEX IF NOT EXISTS idx_turns_created_at
   ON dialogue_turns(created_at DESC);
 
+-- Useful for "which questions cause drop-off"
+CREATE INDEX IF NOT EXISTS idx_turns_question_id
+  ON dialogue_turns(question_id);
+
 -- Ensure only one final turn per session.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_one_final_turn_per_session
   ON dialogue_turns(session_id)
@@ -83,7 +97,3 @@ CREATE TABLE IF NOT EXISTS llm_runs (
 
 CREATE INDEX IF NOT EXISTS idx_llm_status_created_at
   ON llm_runs(status, created_at DESC);
-
--- =========================================================
--- End of Runtime schema
--- =========================================================

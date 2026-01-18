@@ -1,0 +1,101 @@
+question_id,factor_id,factor_key,question_text,answer_type,choices,next_factor_hint
+1001,101,crema_quality,커피 크레마가 부드럽고 오래 유지되는 게 중요하신가요?,single_choice,매우 중요함|어느 정도 중요|상관없음,noise_loud
+1002,102,noise_loud,커피를 주로 언제 내려 드시나요?,single_choice,아침 일찍 또는 밤늦게|낮 시간대|시간 상관없이,price_regret
+1003,103,price_regret,최저가 비교를 꼼꼼히 하시는 편인가요?,single_choice,꼼꼼히 비교함|적당히 찾아봄|크게 신경 안 씀,water_leak
+1004,104,water_leak,커피머신 주변 바닥에 물이 떨어지면 바로 알아채시는 편인가요?,single_choice,바로 알아챔|가끔 늦게 발견|잘 모름,temp_lukewarm
+1005,105,temp_lukewarm,커피는 얼마나 뜨거운 걸 좋아하시나요?,single_choice,펄펄 끓는 정도|적당히 뜨거운|미지근해도 괜찮음,cleaning_hassle
+1006,106,cleaning_hassle,매일 물통 세척하고 관리하는 게 괜찮으신가요?,single_choice,좀 귀찮을 것 같음|할 수 있음|전혀 문제없음,capsule_cost
+1007,107,capsule_cost,캡슐 비용이 매달 쌓이는 게 부담되실 것 같으세요?,single_choice,많이 부담됨|조금 신경 쓰임|상관없음,capsule_compat
+1008,108,capsule_compat,스타벅스 등 다양한 브랜드 캡슐을 쓰고 싶으신가요?,single_choice,꼭 쓰고 싶음|있으면 좋겠음|전용 캡슐만 써도 됨,machine_defect
+1009,109,machine_defect,기계가 가끔 오작동해도 감수하실 수 있으신가요?,single_choice,절대 안 됨|가끔은 괜찮음|크게 상관없음,size_bulk
+1010,110,size_bulk,주방에 가로 40cm 이상 공간이 확보되어 있나요?,single_choice,잘 모르겠음|애매함|충분함,
+2001,201,cleaning_stain,국물 요리나 볶음 요리를 자주 하시나요?,single_choice,거의 매일|일주일에 몇 번|가끔,noise_fan
+2002,202,noise_fan,주방에서 조용한 환경이 중요하신가요?,single_choice,매우 중요함|어느 정도|상관없음,heat_power
+2003,203,heat_power,센 불로 빠르게 조리하는 요리를 자주 하시나요?,single_choice,자주 해요|가끔 해요|거의 안 해요,temp_hot
+2004,204,temp_hot,조리 중 상판이 뜨거워지는 게 걱정되시나요?,single_choice,많이 걱정됨|조금 신경 쓰임|괜찮음,pot_recognition
+2005,205,pot_recognition,현재 사용 중인 냄비가 인덕션용인지 확인하셨나요?,single_choice,잘 모르겠음|일부만 가능|다 확인함,space_fit
+2006,206,space_fit,싱크대 규격을 정확히 재보셨나요?,single_choice,아직 안 잼|대략만 앎|정확히 잼,touch_issue
+2007,207,touch_issue,요리 중에 손에 물이 자주 묻는 편인가요?,single_choice,항상 젖어있음|가끔 묻음|잘 안 묻음,coil_whine
+2008,208,coil_whine,고주파 소음에 민감하신 편인가요?,single_choice,매우 민감함|보통|잘 못 느낌,scratch_worry
+2009,209,scratch_worry,상판에 기스나 스크래치 나는 게 신경 쓰이시나요?,single_choice,많이 신경 쓰임|조금|별로 상관없음,power_limit
+2010,210,power_limit,3개 화구를 동시에 자주 사용하실 예정인가요?,single_choice,자주 그럴 것 같음|가끔|거의 안 함,
+3001,301,anc_noise,노이즈캔슬링 기능을 자주 사용하실 예정인가요?,single_choice,거의 항상|가끔|별로 안 쓸 것 같음,price_value
+3002,302,price_value,30만원대 제품에 어느 정도 품질을 기대하시나요?,single_choice,완벽해야 함|적당히 좋으면 됨|가격은 감안함,connection_issue
+3003,303,connection_issue,주로 어떤 환경에서 사용하시나요?,single_choice,지하철/사람 많은 곳|사무실/집|조용한 곳 위주,ear_pain
+3004,304,ear_pain,하루에 이어폰을 몇 시간 정도 착용하시나요?,single_choice,4시간 이상|2~3시간|1시간 이내,call_quality
+3005,305,call_quality,이어폰으로 통화를 자주 하시나요?,single_choice,자주 함|가끔 함|거의 안 함,unit_defect
+3006,306,unit_defect,제품 불량에 얼마나 민감하신가요?,single_choice,조금이라도 이상하면 안 됨|어느 정도 감수|크게 상관없음,case_scratch
+3007,307,case_scratch,케이스 외관 기스에 신경 쓰이시는 편인가요?,single_choice,많이 신경 쓰임|조금|별로 상관없음,anc_pressure
+3008,308,anc_pressure,밀폐된 느낌이나 압박감에 예민하신가요?,single_choice,매우 예민함|보통|잘 못 느낌,battery_drain
+3009,309,battery_drain,외출 시 충전 없이 얼마나 사용하실 예정인가요?,single_choice,하루 종일|반나절 정도|짧게 짧게,fit_loose
+3010,310,fit_loose,이어폰이 귀에서 빠질까 봐 걱정되시나요?,single_choice,많이 걱정됨|조금|안 걱정됨,
+4001,401,humidity_weak,가습기를 사용할 공간이 몇 평 정도인가요?,single_choice,10평 이상|5~10평|5평 미만,noise_operation
+4002,402,noise_operation,침실에서 취침 중에도 틀어두실 건가요?,single_choice,매일 밤|가끔|낮에만 사용,cleaning_daily
+4003,403,cleaning_daily,매일 물통 세척할 시간적 여유가 있으신가요?,single_choice,바빠서 어려움|할 수는 있음|충분함,skin_discomfort
+4004,404,skin_discomfort,피부가 예민하시거나 아토피가 있으신가요?,single_choice,네 예민해요|보통이에요|아니요 튼튼해요,floor_wet
+4005,405,floor_wet,가습기 주변에 물기에 약한 가구나 전자기기가 있나요?,single_choice,바로 옆에 있음|좀 떨어져 있음|없음,cold_mist
+4006,406,cold_mist,겨울에 방이 추워지는 게 싫으신가요?,single_choice,추운 거 싫음|상관없음|오히려 시원한 게 좋음,smell_issue
+4007,407,smell_issue,냄새에 민감하신 편인가요?,single_choice,매우 민감함|보통|둔한 편,remote_fail
+4008,408,remote_fail,리모컨으로 편하게 조작하는 게 중요하신가요?,single_choice,꼭 필요함|있으면 좋겠음|직접 조작해도 됨,uv_doubt
+4009,409,uv_doubt,UV 살균 기능을 얼마나 기대하시나요?,single_choice,꼭 있어야 함|있으면 좋겠음|없어도 됨,tank_weight
+4010,410,tank_weight,무거운 물건 들기가 부담되시나요?,single_choice,많이 부담됨|조금 부담|괜찮음,
+5001,501,noise_extreme,아파트에서 층간소음이 신경 쓰이시나요?,single_choice,매우 신경 쓰임|조금 신경 쓰임|괜찮음,cleaning_filter
+5002,502,cleaning_filter,사용 후 필터 털고 세척하는 게 괜찮으신가요?,single_choice,좀 귀찮을 것 같음|할 수 있음|전혀 문제없음,battery_short
+5003,503,battery_short,한 번에 청소할 침대가 몇 개인가요?,single_choice,3개 이상|2개|1개,suction_weak
+5004,504,suction_weak,먼지 흡입력이 얼마나 중요하신가요?,single_choice,매우 중요함|적당히 되면 됨|크게 상관없음,navigation_fail
+5005,505,navigation_fail,로봇이 같은 구역만 반복 청소해도 괜찮으신가요?,single_choice,많이 답답할 것 같음|조금 신경 쓰임|괜찮음,size_heavy
+5006,506,size_heavy,제품 보관 공간이 넉넉한 편인가요?,single_choice,좁은 편|보통|넉넉함,price_regret
+5007,507,price_regret,이 가격대에 어느 정도 성능을 기대하시나요?,single_choice,완벽해야 함|적당하면 됨|가격 감안함,stuck_issue
+5008,508,stuck_issue,이불이 울퉁불퉁하거나 접힌 상태로 청소하실 때가 있나요?,single_choice,자주 그래요|가끔|항상 펴고 사용,app_connect
+5009,509,app_connect,앱으로 조작하는 기능이 중요하신가요?,single_choice,꼭 필요함|있으면 좋겠음|없어도 됨,charging_long
+5010,510,charging_long,청소를 급하게 해야 할 때가 자주 있으신가요?,single_choice,자주 있음|가끔|거의 없음,
+6001,602,cleaning_filter,필터 관리를 자주 해야 하는 게 괜찮으신가요?,single_choice,좀 귀찮을 것 같음|할 수 있음|문제없음,noise_loud
+6002,603,noise_loud,아파트에서 층간소음이 걱정되시나요?,single_choice,많이 걱정됨|조금 신경 쓰임|괜찮음,smell_burning
+6003,601,smell_burning,냄새에 민감하시거나 비염이 있으신가요?,single_choice,네 민감해요|보통이에요|아니요,water_leak
+6004,604,water_leak,청소기 내부에 습기가 차는 게 신경 쓰이시나요?,single_choice,많이 신경 쓰임|조금|별로 상관없음,suction_weak
+6005,605,suction_weak,침구 먼지 흡입력이 얼마나 중요하신가요?,single_choice,매우 중요함|적당하면 됨|크게 상관없음,weight_heavy
+6006,606,weight_heavy,손목이나 팔에 무리가 가면 안 되는 상황이신가요?,single_choice,네 조심해야 해요|보통이에요|괜찮아요,price_regret
+6007,607,price_regret,이 가격대에 어느 정도 성능을 기대하시나요?,single_choice,완벽해야 함|적당하면 됨|가격 감안함,heat_exhaust
+6008,608,heat_exhaust,사용 중 뜨거운 바람이 나오면 불쾌하실 것 같으세요?,single_choice,많이 불쾌할 것 같음|조금|괜찮음,cord_short
+6009,609,cord_short,청소할 공간 근처에 콘센트가 있나요?,single_choice,잘 모르겠음|좀 멀어요|가까이 있어요,used_product
+6010,610,used_product,새 제품 상태에 얼마나 예민하신가요?,single_choice,티끌 하나도 안 됨|조금은 괜찮음|별로 신경 안 씀,
+7001,701,wall_gap,설치할 벽에 걸레받이가 있나요?,single_choice,있어요|잘 모르겠어요|없어요,stability_wobble
+7002,702,stability_wobble,어린 자녀가 있거나 지진 대비가 필요하신가요?,single_choice,네 걱정돼요|조금 신경 쓰여요|아니요,smell_chemical
+7003,703,smell_chemical,아이 방이나 환기 어려운 공간에 설치하시나요?,single_choice,네 그래요|아마도요|아니요,finish_rough
+7004,704,finish_rough,마감 품질에 예민하신 편인가요?,single_choice,매우 예민함|어느 정도|별로 신경 안 씀,sticker_mess
+7005,705,sticker_mess,직접 손봐야 하는 작업이 귀찮으신가요?,single_choice,매우 귀찮음|할 수 있음|괜찮음,shelf_sag
+7006,706,shelf_sag,무거운 전공서적이나 전집을 많이 꽂으실 건가요?,single_choice,많이 꽂을 예정|보통|가벼운 것 위주,color_mismatch
+7007,707,color_mismatch,온라인 구매 시 색상 차이가 걱정되시나요?,single_choice,많이 걱정됨|조금|별로 상관없음,size_issue
+7008,708,size_issue,설치할 공간 치수를 정확히 재보셨나요?,single_choice,아직 안 잼|대략만 앎|정확히 잼,door_issue
+7009,709,door_issue,문짝이 부드럽게 열리고 닫히는 게 중요하신가요?,single_choice,매우 중요함|어느 정도|상관없음,weight_heavy
+7010,710,weight_heavy,혼자서 가구를 옮겨야 할 상황이 있으신가요?,single_choice,자주 있음|가끔|거의 없음,
+8001,801,size_large,설치할 공간의 치수를 정확히 재보셨나요?,single_choice,아직 안 잼|대략만 앎|정확히 잼,defect_quality
+8002,802,defect_quality,마감이나 조립 상태에 하자가 있으면 어떠실 것 같으세요?,single_choice,절대 안 됨|작은 건 괜찮음|크게 상관없음,price_regret
+8003,803,price_regret,이 가격대에 어느 정도 품질을 기대하시나요?,single_choice,완벽해야 함|적당히 좋으면 됨|가격 감안함,finish_rough
+8004,804,finish_rough,고급스럽고 매끄러운 마감이 중요하신가요?,single_choice,매우 중요함|어느 정도|별로 상관없음,cleaning_stain
+8005,805,cleaning_stain,상판에 음료나 음식을 자주 올려두시나요?,single_choice,자주 그래요|가끔|거의 안 해요,smell_chemical
+8006,806,smell_chemical,냄새에 민감하시거나 어린 자녀가 사용하시나요?,single_choice,네 그래요|보통이에요|아니요,noise_squeak
+8007,807,noise_squeak,가구에서 삐걱 소리가 나면 신경 쓰이시나요?,single_choice,많이 신경 쓰임|조금|별로 상관없음,wobble_issue
+8008,808,wobble_issue,책상이 견고하고 안 흔들리는 게 중요하신가요?,single_choice,매우 중요함|어느 정도|상관없음,monitor_arm
+8009,809,monitor_arm,모니터암을 설치할 계획이 있으신가요?,single_choice,꼭 할 예정|고려 중|안 할 것 같음,assembly_hard
+8010,810,assembly_hard,조립이나 설치가 복잡하면 스트레스 받으시나요?,single_choice,많이 받음|조금|괜찮음,
+9001,901,comfort_pain,하루에 몇 시간 정도 앉아 계시나요?,single_choice,8시간 이상|4~7시간|4시간 미만,weight_heavy
+9002,902,weight_heavy,의자를 자주 옮기거나 들어야 하나요?,single_choice,자주 그래요|가끔|거의 안 해요,price_fluctuation
+9003,903,price_fluctuation,최저가를 충분히 비교해보셨나요?,single_choice,아직 안 해봄|조금 해봄|충분히 비교함,floor_scratch
+9004,904,floor_scratch,바닥이 나무 마루나 쉽게 긁히는 소재인가요?,single_choice,네 마루예요|장판이에요|타일/카펫이에요,armrest_issue
+9005,905,armrest_issue,팔걸이 높이 조절이 중요하신가요?,single_choice,매우 중요함|있으면 좋겠음|없어도 됨,noise_squeak
+9006,906,noise_squeak,의자에서 삐걱 소리가 나면 신경 쓰이시나요?,single_choice,많이 신경 쓰임|조금|별로 상관없음,level_tilt
+9007,907,level_tilt,바닥이 평평하지 않은 곳에서 사용하시나요?,single_choice,그런 편|잘 모르겠음|평평해요,quality_doubt
+9008,908,quality_doubt,브랜드 제품에 어느 정도 품질을 기대하시나요?,single_choice,완벽해야 함|적당히 좋으면 됨|가격 감안함,height_mismatch
+9009,909,height_mismatch,사용하실 책상 높이가 표준(72~75cm)인가요?,single_choice,잘 모르겠음|아마 다를 것 같음|표준이에요,stain_issue
+9010,910,stain_issue,배송받은 제품에 작은 오염이 있어도 괜찮으신가요?,single_choice,절대 안 됨|작은 건 괜찮음|별로 신경 안 씀,
+10001,1001,back_pain,현재 허리가 안 좋으시거나 디스크가 있으신가요?,single_choice,네 안 좋아요|가끔 뻐근해요|건강해요,sinking_deep
+10002,1002,sinking_deep,너무 푹신해서 몸이 가라앉는 느낌이 불편하신가요?,single_choice,매우 불편함|조금 신경 쓰임|오히려 좋음,weight_heavy
+10003,1003,weight_heavy,매트리스 밑 청소를 자주 하시거나 이사 계획이 있으신가요?,single_choice,네 그래요|가끔요|아니요,price_regret
+10004,1004,price_regret,이 가격대에 어느 정도 품질을 기대하시나요?,single_choice,완벽해야 함|적당히 좋으면 됨|가격 감안함,no_showroom
+10005,1005,no_showroom,직접 눕어보지 않고 구매하는 게 불안하신가요?,single_choice,많이 불안함|조금|괜찮음,edge_collapse
+10006,1006,edge_collapse,매트리스 가장자리에 걸터앉는 일이 자주 있으신가요?,single_choice,자주 그래요|가끔|거의 안 해요,heat_retention
+10007,1007,heat_retention,잘 때 더위를 많이 타시는 편인가요?,single_choice,매우 그래요|보통이에요|추위를 타요,size_error
+10008,1008,size_error,침대 프레임 사이즈를 정확히 확인하셨나요?,single_choice,아직 안 함|대략 알고 있음|정확히 확인함,smell_chemical
+10009,1009,smell_chemical,냄새에 민감하시거나 환기가 어려운 공간인가요?,single_choice,네 민감해요|보통이에요|아니요,restore_fail
+10010,1010,restore_fail,압축 매트리스 복원에 대해 걱정되시나요?,single_choice,많이 걱정됨|조금|별로 안 걱정됨,

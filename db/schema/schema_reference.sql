@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS reference_data_versions (
 -- 2. Products (derived from reg_factor_v4_1)
 -- =========================================================
 CREATE TABLE IF NOT EXISTS ref_products (
-    product_no      INTEGER PRIMARY KEY,    -- 1 ~ 10
+    product_no      INTEGER PRIMARY KEY,
     product_name    TEXT NOT NULL,
     category        TEXT NOT NULL,
     category_name   TEXT NOT NULL
