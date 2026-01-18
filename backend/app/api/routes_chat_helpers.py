@@ -6,7 +6,7 @@ from pathlib import Path
 from collections import Counter
 
 from ..schemas.responses import CollectReviewsResponse, Review, FactorMatch
-from .session_store import SessionStore
+from ...legacy.session_store import SessionStore
 from backend.app.core.settings import settings
 
 logger = logging.getLogger(__name__)
