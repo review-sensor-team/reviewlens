@@ -6,11 +6,14 @@ import logging
 import random
 from typing import Optional
 from pathlib import Path
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from ...services.review_service import ReviewService
 from ...core.settings import settings
+from ...domain.reg.store import load_csvs, parse_factors
+from ...domain.dialogue.session import DialogueSession
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +383,6 @@ def _load_factor_questions(factor_key: str) -> list:
     Returns:
         질문 리스트
     """
-    from ...domain.reg.store import load_csvs
     _, _, questions_df = load_csvs(get_data_dir())
     
     related_questions = questions_df[
@@ -473,7 +475,6 @@ def _load_product_info(product_name: str) -> tuple:
     if not factor_csv_path.exists():
         raise HTTPException(status_code=404, detail="Factor CSV 파일을 찾을 수 없습니다")
     
-    import pandas as pd
     df = pd.read_csv(factor_csv_path)
     
     product_rows = df[df['product_name'] == product_name]
@@ -767,7 +768,6 @@ async def analyze_product(
         normalized_df = _load_review_data(category, service)
         
         # 3. Factor 로드 (해당 카테고리만)
-        from ...domain.reg.store import load_csvs, parse_factors
         _, factors_df, _ = load_csvs(get_data_dir())
         all_factors = parse_factors(factors_df)
         factors = [f for f in all_factors if f.category == category]
@@ -958,7 +958,6 @@ async def answer_question(
         
         # 4. 수렴되지 않았으면 다음 질문 로드
         if not is_converged:
-            from ...domain.reg.store import load_csvs
             _, _, questions_df = load_csvs(get_data_dir())
             
             # factor_key 결정
@@ -995,9 +994,6 @@ async def answer_question(
         # 5. 수렴되었으면 분석 결과 생성 (LLM 호출)
         if is_converged:
             logger.info(f"수렴 조건 달성 - LLM 분석 시작")
-            
-            from backend.app.domain.dialogue.session import DialogueSession
-            from backend.app.domain.reg.store import load_csvs
             
             # DialogueSession 생성 (dialogue_history 전달)
             normalized_df = session_data.get("normalized_df")

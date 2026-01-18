@@ -2,8 +2,11 @@
 """Dialogue engine: 3-5 turn conversation for factor convergence"""
 from __future__ import annotations
 
+import json
 import logging
+import traceback
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -20,9 +23,12 @@ from ...infra.observability.metrics import (
     retrieval_duration_seconds,
     scoring_duration_seconds,
     evidence_count,
+    llm_calls_total,
+    llm_duration_seconds,
     Timer,
 )
-from ...core.settings import Settings
+from ...core.settings import Settings, settings
+from backend.llm.llm_factory import get_llm_client
 
 settings = Settings()
 
@@ -176,7 +182,6 @@ class DialogueSession:
         cur_top3 = [k for k, _ in top_factors]
         sim = _jaccard(cur_top3, self.prev_top3) if self.prev_top3 else 0.0
         
-        from backend.app.core.settings import settings
         if sim >= settings.DIALOGUE_JACCARD_THRESHOLD:
             self.stability_hits += 1
         else:
@@ -193,7 +198,6 @@ class DialogueSession:
         Returns:
             분석 제공 여부
         """
-        from backend.app.core.settings import settings
         should_provide = (self.turn_count >= settings.DIALOGUE_MIN_ANALYSIS_TURNS)
         logger.info(f"  - 분석 체크: should_provide_analysis={should_provide} (turn={self.turn_count}, stability={self.stability_hits})")
         return should_provide
@@ -489,19 +493,17 @@ class DialogueSession:
         Returns:
             Evidence 리뷰 리스트
         """
-        from backend.app.core.settings import settings as app_settings
-        
         with Timer(retrieval_duration_seconds, {'category': self.category}):
             evidence = retrieve_evidence_reviews(
                 self.scored_df,
                 self.factors_map,
                 [(k, s) for k, s in top_factors],
-                per_factor_limit=(app_settings.EVIDENCE_PER_FACTOR_MIN, app_settings.EVIDENCE_PER_FACTOR_MAX),
-                max_total_evidence=app_settings.EVIDENCE_MAX_TOTAL,
+                per_factor_limit=(settings.EVIDENCE_PER_FACTOR_MIN, settings.EVIDENCE_PER_FACTOR_MAX),
+                max_total_evidence=settings.EVIDENCE_MAX_TOTAL,
                 quota_by_rank={
-                    0: {"NEG": app_settings.EVIDENCE_RANK0_NEG, "MIX": app_settings.EVIDENCE_RANK0_MIX, "POS": app_settings.EVIDENCE_RANK0_POS},
-                    1: {"NEG": app_settings.EVIDENCE_RANK1_NEG, "MIX": app_settings.EVIDENCE_RANK1_MIX, "POS": app_settings.EVIDENCE_RANK1_POS},
-                    2: {"NEG": app_settings.EVIDENCE_RANK2_NEG, "MIX": app_settings.EVIDENCE_RANK2_MIX, "POS": app_settings.EVIDENCE_RANK2_POS},
+                    0: {"NEG": settings.EVIDENCE_RANK0_NEG, "MIX": settings.EVIDENCE_RANK0_MIX, "POS": settings.EVIDENCE_RANK0_POS},
+                    1: {"NEG": settings.EVIDENCE_RANK1_NEG, "MIX": settings.EVIDENCE_RANK1_MIX, "POS": settings.EVIDENCE_RANK1_POS},
+                    2: {"NEG": settings.EVIDENCE_RANK2_NEG, "MIX": settings.EVIDENCE_RANK2_MIX, "POS": settings.EVIDENCE_RANK2_POS},
                 },
             )
         
@@ -781,10 +783,6 @@ class DialogueSession:
 
     def _save_llm_context(self, llm_context: Dict) -> None:
         """LLM 컨텍스트를 JSON 파일로 저장"""
-        import json
-        from datetime import datetime
-        from pathlib import Path
-        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_dir = Path("out")
         out_dir.mkdir(exist_ok=True)
@@ -801,10 +799,6 @@ class DialogueSession:
         evidence_reviews: List[Dict]
     ) -> str:
         """LLM 클라이언트를 호출하여 요약 생성 (메트릭 기록 포함)"""
-        from backend.llm.llm_factory import get_llm_client
-        from ...infra.observability.metrics import llm_calls_total, llm_duration_seconds, Timer
-        from ...core.settings import settings
-        
         llm_client = get_llm_client()
         provider = settings.LLM_PROVIDER
         
@@ -828,15 +822,11 @@ class DialogueSession:
         error: Exception
     ) -> str:
         """LLM 호출 실패 시 폴백 요약 메시지 생성"""
-        from ...infra.observability.metrics import llm_calls_total
-        import traceback
-        
         logger.error(f"[LLM 요약 생성 실패] {error}", exc_info=True)
         logger.error(f"[스택트레이스]\n{traceback.format_exc()}")
         
         # 메트릭: LLM 호출 에러
         try:
-            from ...core.settings import settings
             provider = settings.LLM_PROVIDER
         except:
             provider = 'unknown'

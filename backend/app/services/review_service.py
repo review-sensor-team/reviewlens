@@ -4,6 +4,15 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import pandas as pd
 
+from ..infra.loaders import ReviewLoaderFactory
+from ..infra.storage.csv_storage import CSVStorage
+from ..infra.cache.review_cache import ReviewCache
+from ..infra.collectors.smartstore import SmartStoreCollector
+from ..domain.review.normalize import normalize_review, dedupe_reviews
+from ..domain.review.scoring import compute_review_factor_scores
+from ..domain.review.retrieval import retrieve_evidence_reviews
+from ..core.settings import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,8 +44,6 @@ class ReviewService:
     def _get_review_loader(self):
         """Review Loader 인스턴스 가져오기 (lazy loading with Factory)"""
         if self._review_loader is None:
-            from ..infra.loaders import ReviewLoaderFactory
-            from ..core.settings import settings
             self._review_loader = ReviewLoaderFactory.create_from_settings(
                 settings=settings,
                 data_dir=self.data_dir
@@ -46,8 +53,6 @@ class ReviewService:
     def _get_storage(self):
         """Storage 인스턴스 가져오기 (lazy loading) - Deprecated, use _get_review_loader instead"""
         if self._storage is None and self.use_storage:
-            from ..infra.storage.csv_storage import CSVStorage
-            from ..core.settings import settings
             self._storage = CSVStorage(
                 data_dir=self.data_dir,
                 file_format=settings.REVIEW_FILE_FORMAT
@@ -57,7 +62,6 @@ class ReviewService:
     def _get_cache(self):
         """Cache 인스턴스 가져오기 (lazy loading)"""
         if self._cache is None and self.use_cache:
-            from ..infra.cache.review_cache import ReviewCache
             self._cache = ReviewCache(cache_dir=str(self.data_dir / "review"))
         return self._cache
     
@@ -189,7 +193,6 @@ class ReviewService:
         """크롤러로 리뷰 수집"""
         try:
             if vendor == "smartstore":
-                from ..infra.collectors.smartstore import SmartStoreCollector
                 collector = SmartStoreCollector(product_url=product_url, headless=True)
                 reviews, _ = collector.collect_reviews(max_reviews=max_reviews)
                 
@@ -269,8 +272,6 @@ class ReviewService:
         Returns:
             정규화된 리뷰 데이터프레임
         """
-        from ..domain.review.normalize import normalize_review, dedupe_reviews
-        
         logger.info(f"리뷰 정규화: {len(reviews_df)}건 (vendor={vendor})")
         
         # 1. 각 리뷰 정규화
@@ -337,8 +338,6 @@ class ReviewService:
         Returns:
             분석 결과
         """
-        from ..domain.review.scoring import compute_review_factor_scores
-        
         logger.info(f"리뷰 분석: {len(reviews_df)}건, {len(factors)}개 factors")
         
         # 1. Factor scoring
@@ -378,8 +377,6 @@ class ReviewService:
         Returns:
             증거 리뷰 리스트
         """
-        from ..domain.review.retrieval import retrieve_evidence_reviews
-        
         logger.info(f"증거 리뷰 추출: {factor_key} (quota={quota})")
         
         evidence = retrieve_evidence_reviews(
