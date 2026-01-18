@@ -549,7 +549,9 @@ class DialogueSession:
         Args:
             top_factors: 상위 factor 리스트
             evidence: Evidence 리뷰 리스트
-            llm_summary: LLM 요약 (str 또는 List[Dict])
+            llm_summary: LLM 요약
+                - 단일 전략: tuple[str, str] (요약, 응답 파일명)
+                - 다중 전략: List[Dict] (전략별 요약, response_file 포함)
             calculation_info: 계산 정보
             
         Returns:
@@ -588,13 +590,18 @@ class DialogueSession:
             "calculation_info": calculation_info,
         }
         
-        # llm_summary가 리스트면 다중 전략, 아니면 단일 전략
+        # llm_summary가 리스트면 다중 전략, 튜플이면 단일 전략
         if isinstance(llm_summary, list):
             # 다중 전략: llm_summaries 배열로 반환
             context["llm_summaries"] = llm_summary
             context["llm_summary"] = llm_summary[0]["summary"] if llm_summary else ""  # 호환성
+        elif isinstance(llm_summary, tuple):
+            # 단일 전략: (요약, 파일명) 튜플
+            summary_text, response_file = llm_summary
+            context["llm_summary"] = summary_text
+            context["response_file"] = response_file
         else:
-            # 단일 전략: 기존 형식 유지
+            # 호환성 유지 (str만 전달된 경우)
             context["llm_summary"] = llm_summary
         
         return context
@@ -816,8 +823,8 @@ class DialogueSession:
         """LLM 클라이언트를 호출하여 요약 생성 (메트릭 기록 포함)
         
         Returns:
-            단일 전략: str (요약 텍스트)
-            다중 전략: List[Dict] (전략별 요약)
+            단일 전략: tuple[str, str] (요약 텍스트, 응답 파일명)
+            다중 전략: List[Dict] (전략별 요약, response_file 포함)
         """
         llm_client = get_llm_client()
         provider = settings.LLM_PROVIDER
@@ -830,7 +837,7 @@ class DialogueSession:
             logger.info(f"[LLM] 단일 전략 '{strategies[0]}' 사용")
             
             with Timer(llm_duration_seconds, {'provider': provider}):
-                summary = llm_client.generate_summary(
+                summary, response_file = llm_client.generate_summary(
                     top_factors=top_factors,
                     evidence_reviews=evidence_reviews,
                     total_turns=self.turn_count,
@@ -840,8 +847,8 @@ class DialogueSession:
                 )
             
             llm_calls_total.labels(provider=provider, status='success').inc()
-            logger.info(f"[LLM 요약 생성 완료] {len(summary)}자")
-            return summary
+            logger.info(f"[LLM 요약 생성 완료] {len(summary)}자, 파일={response_file}")
+            return summary, response_file
         
         # 다중 전략
         else:

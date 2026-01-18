@@ -93,7 +93,7 @@ class BaseLLMClient(ABC):
         category_name: str,
         product_name: str = "이 제품",
         dialogue_history: Optional[List[Dict[str, str]]] = None
-    ) -> str:
+    ) -> tuple[str, str]:
         """
         최종 분석 요약 생성 (템플릿 메서드)
         
@@ -106,7 +106,7 @@ class BaseLLMClient(ABC):
             dialogue_history: 대화 내역
             
         Returns:
-            str: 생성된 분석 요약 (JSON 형식)
+            tuple[str, str]: (생성된 분석 요약 JSON, 응답 파일명)
         """
         # 프롬프트 구성 (공통 로직)
         system_prompt = PromptBuilder.build_system_prompt()
@@ -123,14 +123,14 @@ class BaseLLMClient(ABC):
             response = self._call_api(system_prompt, user_prompt)
             
             # 응답 저장
-            self._save_response(response, product_name)
+            response_file = self._save_response(response, product_name)
             
-            return response
+            return response, response_file
         except Exception as e:
             logger.error(f"{self.__class__.__name__} API 호출 실패: {e}")
             fallback = PromptBuilder.get_fallback_summary(top_factors, category_name, product_name)
-            self._save_response(fallback, product_name)
-            return fallback
+            response_file = self._save_response(fallback, product_name)
+            return fallback, response_file
     
     def generate_summaries_with_strategies(
         self,
@@ -184,11 +184,12 @@ class BaseLLMClient(ABC):
                 response = self._call_api(system_prompt, user_prompt)
                 
                 # 응답 저장 (전략 이름 포함)
-                self._save_response_with_strategy(response, product_name, strategy_name)
+                response_file = self._save_response_with_strategy(response, product_name, strategy_name)
                 
                 results.append({
                     "strategy": strategy_name,
-                    "summary": response
+                    "summary": response,
+                    "response_file": response_file
                 })
                 
                 logger.info(f"[Multi-Strategy] '{strategy_name}' 전략 완료")
@@ -201,7 +202,8 @@ class BaseLLMClient(ABC):
                 results.append({
                     "strategy": strategy_name,
                     "summary": fallback,
-                    "error": str(e)
+                    "error": str(e),
+                    "response_file": ""
                 })
         
         return results
@@ -247,8 +249,12 @@ class BaseLLMClient(ABC):
         except Exception as e:
             logger.error(f"프롬프트 저장 실패: {e}")
     
-    def _save_response(self, response: str, product_name: str):
-        """LLM 응답을 JSON 파일로 저장"""
+    def _save_response(self, response: str, product_name: str) -> str:
+        """LLM 응답을 JSON 파일로 저장
+        
+        Returns:
+            str: 저장된 파일명 (response_file.name)
+        """
         try:
             from datetime import datetime
             from pathlib import Path
@@ -289,8 +295,10 @@ class BaseLLMClient(ABC):
                     }, f, ensure_ascii=False, indent=2)
             
             logger.info(f"[LLM 응답 저장] {response_file}")
+            return response_file.name
         except Exception as e:
             logger.error(f"응답 저장 실패: {e}")
+            return ""
     
     def _save_prompt_with_strategy(self, system_prompt: str, user_prompt: str, strategy: str):
         """전략 이름을 포함하여 프롬프트 저장"""
@@ -321,8 +329,12 @@ class BaseLLMClient(ABC):
         except Exception as e:
             logger.error(f"프롬프트 저장 실패: {e}")
     
-    def _save_response_with_strategy(self, response: str, product_name: str, strategy: str):
-        """전략 이름을 포함하여 LLM 응답 저장"""
+    def _save_response_with_strategy(self, response: str, product_name: str, strategy: str) -> str:
+        """전략 이름을 포함하여 LLM 응답 저장
+        
+        Returns:
+            str: 저장된 파일명 (response_file.name)
+        """
         try:
             from datetime import datetime
             from pathlib import Path
@@ -365,5 +377,7 @@ class BaseLLMClient(ABC):
                     }, f, ensure_ascii=False, indent=2)
             
             logger.info(f"[LLM 응답 저장] {response_file}")
+            return response_file.name
         except Exception as e:
             logger.error(f"응답 저장 실패: {e}")
+            return ""

@@ -98,6 +98,23 @@
               </button>
             </div>
 
+            <!-- 별점 선택 UI -->
+            <div v-if="msg.showRating" class="rating-container">
+              <div class="rating-stars">
+                <span
+                  v-for="star in 5"
+                  :key="star"
+                  class="star"
+                  :class="{ filled: star <= (msg.hoverRating || 0) }"
+                  @mouseenter="msg.hoverRating = star"
+                  @mouseleave="msg.hoverRating = 0"
+                  @click="submitRating(star, msg.responseFile, msg.strategy)"
+                >
+                  ⭐
+                </span>
+              </div>
+            </div>
+
             <!-- 일반 옵션 버튼 -->
             <div v-if="msg.options" class="option-list">
               <button
@@ -308,7 +325,7 @@ const convertMarkdownToHtml = (markdown) => {
   return marked(markdown)
 }
 
-const pushBot = (text, options = null, regretPoints = null, reviews = null, messageType = null, reviewSummary = null, questionId = null, factorKey = null) => {
+const pushBot = (text, options = null, regretPoints = null, reviews = null, messageType = null, reviewSummary = null, questionId = null, factorKey = null, showRating = false, responseFile = null, strategy = null) => {
   messages.value.push({ 
     role: 'bot', 
     text, 
@@ -319,12 +336,89 @@ const pushBot = (text, options = null, regretPoints = null, reviews = null, mess
     reviewSummary,
     questionId,
     factorKey,
+    showRating,
+    responseFile,
+    strategy,
+    hoverRating: 0,
     timestamp: formatTimestamp()
   })
   scrollBottom()
 }
 
-const pushUser = (text) => {
+const pushUser = (text, rating = null) => {
+  const userMsg = { 
+    role: 'user', 
+    text,
+    timestamp: formatTimestamp()
+  }
+  
+  // 별점이 있으면 별 표시 추가
+  if (rating) {
+    userMsg.text = '⭐'.repeat(rating) + ` (${rating}점)`
+  }
+  
+  messages.value.push(userMsg)
+  scrollBottom()
+}
+
+// 별점 제출
+const submitRating = async (rating, responseFile, strategy = null) => {
+  try {
+    // 사용자 메시지에 별점 표시
+    pushUser('', rating)
+    
+    // 별점 요청 메시지의 별점 UI 숨기기
+    const lastBotMessage = [...messages.value].reverse().find(m => m.role === 'bot' && m.showRating)
+    if (lastBotMessage) {
+      lastBotMessage.showRating = false
+    }
+    
+    // strategy 파라미터가 없으면 lastBotMessage에서 가져오기
+    const strategyToSend = strategy || lastBotMessage?.strategy
+    
+    console.log('별점 전송:', { responseFile, rating, strategy: strategyToSend })
+    
+    // 백엔드로 별점 전송
+    const payload = {
+      response_file: responseFile,
+      rating: rating
+    }
+    
+    // strategy가 있으면 추가
+    if (strategyToSend) {
+      payload.strategy = strategyToSend
+    }
+    
+    const response = await fetch('http://localhost:8000/api/v2/reviews/rate-response', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+    
+    if (response.ok) {
+      console.log('별점 전송 성공:', rating)
+      
+      // 다중 전략이 아니면 "다른 상품 분석?" 메시지 표시
+      if (!strategyToSend || messages.value.filter(m => m.showRating).length === 0) {
+        pushBot('소중한 의견 감사합니다! 😊<br/>다른 상품도 분석해 드릴까요?')
+        waitingForNewAnalysisResponse.value = true
+      } else {
+        pushBot('감사합니다! 😊')
+      }
+    } else {
+      const errorData = await response.json()
+      console.error('별점 전송 실패:', response.status, errorData)
+      pushBot(`평가를 저장하는데 실패했어요. 😢<br/>오류: ${errorData.detail || '알 수 없는 오류'}`)
+    }
+  } catch (error) {
+    console.error('별점 전송 오류:', error)
+    pushBot('평가를 저장하는데 실패했어요. 😢<br/>네트워크 오류가 발생했습니다.')
+  }
+}
+
+const pushUser_old = (text) => {
   messages.value.push({ 
     role: 'user', 
     text,
@@ -489,6 +583,101 @@ const send = async () => {
       loadingText.value = '후회 포인트를 분석 중이에요...'
       await new Promise(r => setTimeout(r, 800))
       
+      // 다중 전략인 경우
+      if (data.analysis.llm_summaries && data.analysis.llm_summaries.length > 1) {
+        console.log('[다중 전략] 전략 개수:', data.analysis.llm_summaries.length)
+        
+        for (const strategyResult of data.analysis.llm_summaries) {
+          const llmSummary = strategyResult.summary
+          const strategyName = strategyResult.strategy
+          const responseFile = strategyResult.response_file
+          
+          try {
+            const analysisJson = JSON.parse(llmSummary)
+            let markdown = `# 📊 ${data.analysis.product_name || '제품'} 분석 결과 (${strategyName} 스타일)\n\n`
+            
+            if (analysisJson.summary) {
+              markdown += `## 💡 요약\n${analysisJson.summary}\n\n`
+            }
+            
+            if (analysisJson.key_findings && analysisJson.key_findings.length > 0) {
+              markdown += `## 🔍 주요 발견사항\n\n`
+              analysisJson.key_findings.forEach((finding, idx) => {
+                const riskEmoji = finding.risk_level === 'high' ? '🔴' : finding.risk_level === 'mid' ? '🟡' : '🟢'
+                markdown += `### ${idx + 1}. ${finding.factor} ${riskEmoji}\n${finding.what_users_say}\n\n`
+              })
+            }
+            
+            if (analysisJson.balanced_view) {
+              markdown += `## ⚖️ 균형잡힌 시각\n\n`
+              if (analysisJson.balanced_view.pros && analysisJson.balanced_view.pros.length > 0) {
+                markdown += `### ✅ 장점\n`
+                analysisJson.balanced_view.pros.forEach(pro => { markdown += `- ${pro.point}\n` })
+                markdown += `\n`
+              }
+              if (analysisJson.balanced_view.cons && analysisJson.balanced_view.cons.length > 0) {
+                markdown += `### ⚠️ 단점/주의사항\n`
+                analysisJson.balanced_view.cons.forEach(con => { markdown += `- ${con.point}\n` })
+                markdown += `\n`
+              }
+              if (analysisJson.balanced_view.mixed && analysisJson.balanced_view.mixed.length > 0) {
+                markdown += `### 🔄 상황에 따라 다름\n`
+                analysisJson.balanced_view.mixed.forEach(mix => { markdown += `- ${mix.point}\n` })
+                markdown += `\n`
+              }
+            }
+            
+            if (analysisJson.decision_rule) {
+              markdown += `## 🤔 구매 결정 가이드\n\n`
+              if (analysisJson.decision_rule.if_buy && analysisJson.decision_rule.if_buy.length > 0) {
+                markdown += `### 구매를 고려해도 좋은 경우:\n`
+                analysisJson.decision_rule.if_buy.forEach(condition => { markdown += `- ${condition}\n` })
+                markdown += `\n`
+              }
+              if (analysisJson.decision_rule.if_hold && analysisJson.decision_rule.if_hold.length > 0) {
+                markdown += `### 보류가 나은 경우:\n`
+                analysisJson.decision_rule.if_hold.forEach(condition => { markdown += `- ${condition}\n` })
+                markdown += `\n`
+              }
+            }
+            
+            if (analysisJson.final_recommendation) {
+              const recEmoji = analysisJson.final_recommendation === '구매' ? '✅' : 
+                             analysisJson.final_recommendation === '보류' ? '⏸️' : '🔍'
+              markdown += `## ${recEmoji} 최종 추천: ${analysisJson.final_recommendation}\n\n`
+            }
+            
+            if (analysisJson.one_line_tip) {
+              markdown += `> 💬 **Tip:** ${analysisJson.one_line_tip}\n\n`
+            }
+            
+            const htmlContent = convertMarkdownToHtml(markdown)
+            pushBot(htmlContent, null, null, null, 'analyze')
+            
+            // 각 전략별 별점 요청
+            pushBot(
+              `"${strategyName}" 스타일 분석에 만족하셨나요? 별점을 남겨주세요!`, 
+              null, null, null, null, null, null, null, 
+              true,  // showRating
+              responseFile,
+              strategyName  // strategy
+            )
+          } catch (e) {
+            console.error(`[${strategyName}] 분석 결과 파싱 실패:`, e)
+            const htmlContent = convertMarkdownToHtml(llmSummary)
+            pushBot(htmlContent, null, null, null, 'analyze')
+          }
+        }
+        
+        // 다중 전략 완료 후 다음 분석 안내
+        waitingForNewAnalysisResponse.value = true
+        pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
+        loading.value = false
+        stopLoadingTimer()
+        return
+      }
+      
+      // 단일 전략인 경우
       const llmSummary = data.analysis.llm_summary
       if (llmSummary) {
         try {
@@ -552,17 +741,36 @@ const send = async () => {
           
           const htmlContent = convertMarkdownToHtml(markdown)
           pushBot(htmlContent, null, null, null, 'analyze')
+          
+          // 별점 요청 메시지 추가
+          const responseFile = data.analysis.response_file || `llm_response_${Date.now()}.json`
+          pushBot(
+            '분석 결과에 만족하셨나요? 별점을 남겨주세요!', 
+            null, null, null, null, null, null, null, 
+            true,  // showRating
+            responseFile
+          )
         } catch (e) {
           console.error('LLM 분석 결과 파싱 실패:', e)
           const htmlContent = convertMarkdownToHtml(llmSummary)
           pushBot(htmlContent, null, null, null, 'analyze')
+          
+          // 별점 요청 메시지 추가
+          const responseFile = data.analysis.response_file || `llm_response_${Date.now()}.json`
+          pushBot(
+            '분석 결과에 만족하셨나요? 별점을 남겨주세요!', 
+            null, null, null, null, null, null, null, 
+            true,  // showRating
+            responseFile
+          )
         }
       } else {
         pushBot('분석이 완료되었습니다.', null, null, null, 'analyze')
       }
       
-      waitingForNewAnalysisResponse.value = true
-      pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
+      // 별점 요청 후에는 "다른 상품 분석?" 메시지를 제거
+      // waitingForNewAnalysisResponse.value = true
+      // pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
     } else if (data.next_question) {
       // 다음 질문 표시
       pushBot(
@@ -747,7 +955,100 @@ const selectOption = async (opt) => {
       // 잠시 대기 (사용자가 메시지 볼 수 있도록)
       await new Promise(r => setTimeout(r, 800))
       
-      // LLM 분석 결과 표시
+      // 다중 전략인 경우
+      if (data.analysis.llm_summaries && data.analysis.llm_summaries.length > 1) {
+        console.log('[다중 전략] 전략 개수:', data.analysis.llm_summaries.length)
+        
+        for (const strategyResult of data.analysis.llm_summaries) {
+          const llmSummary = strategyResult.summary
+          const strategyName = strategyResult.strategy
+          const responseFile = strategyResult.response_file
+          
+          try {
+            const analysisJson = JSON.parse(llmSummary)
+            let markdown = `# 📊 ${data.analysis.product_name || '제품'} 분석 결과 (${strategyName} 스타일)\n\n`
+            
+            if (analysisJson.summary) {
+              markdown += `## 💡 요약\n${analysisJson.summary}\n\n`
+            }
+            
+            if (analysisJson.key_findings && analysisJson.key_findings.length > 0) {
+              markdown += `## 🔍 주요 발견사항\n\n`
+              analysisJson.key_findings.forEach((finding, idx) => {
+                const riskEmoji = finding.risk_level === 'high' ? '🔴' : finding.risk_level === 'mid' ? '🟡' : '🟢'
+                markdown += `### ${idx + 1}. ${finding.factor} ${riskEmoji}\n${finding.what_users_say}\n\n`
+              })
+            }
+            
+            if (analysisJson.balanced_view) {
+              markdown += `## ⚖️ 균형잡힌 시각\n\n`
+              if (analysisJson.balanced_view.pros && analysisJson.balanced_view.pros.length > 0) {
+                markdown += `### ✅ 장점\n`
+                analysisJson.balanced_view.pros.forEach(pro => { markdown += `- ${pro.point}\n` })
+                markdown += `\n`
+              }
+              if (analysisJson.balanced_view.cons && analysisJson.balanced_view.cons.length > 0) {
+                markdown += `### ⚠️ 단점/주의사항\n`
+                analysisJson.balanced_view.cons.forEach(con => { markdown += `- ${con.point}\n` })
+                markdown += `\n`
+              }
+              if (analysisJson.balanced_view.mixed && analysisJson.balanced_view.mixed.length > 0) {
+                markdown += `### 🔄 상황에 따라 다름\n`
+                analysisJson.balanced_view.mixed.forEach(mix => { markdown += `- ${mix.point}\n` })
+                markdown += `\n`
+              }
+            }
+            
+            if (analysisJson.decision_rule) {
+              markdown += `## 🤔 구매 결정 가이드\n\n`
+              if (analysisJson.decision_rule.if_buy && analysisJson.decision_rule.if_buy.length > 0) {
+                markdown += `### 구매를 고려해도 좋은 경우:\n`
+                analysisJson.decision_rule.if_buy.forEach(condition => { markdown += `- ${condition}\n` })
+                markdown += `\n`
+              }
+              if (analysisJson.decision_rule.if_hold && analysisJson.decision_rule.if_hold.length > 0) {
+                markdown += `### 보류가 나은 경우:\n`
+                analysisJson.decision_rule.if_hold.forEach(condition => { markdown += `- ${condition}\n` })
+                markdown += `\n`
+              }
+            }
+            
+            if (analysisJson.final_recommendation) {
+              const recEmoji = analysisJson.final_recommendation === '구매' ? '✅' : 
+                             analysisJson.final_recommendation === '보류' ? '⏸️' : '🔍'
+              markdown += `## ${recEmoji} 최종 추천: ${analysisJson.final_recommendation}\n\n`
+            }
+            
+            if (analysisJson.one_line_tip) {
+              markdown += `> 💬 **Tip:** ${analysisJson.one_line_tip}\n\n`
+            }
+            
+            const htmlContent = convertMarkdownToHtml(markdown)
+            pushBot(htmlContent, null, null, null, 'analyze')
+            
+            // 각 전략별 별점 요청
+            pushBot(
+              `"${strategyName}" 스타일 분석에 만족하셨나요? 별점을 남겨주세요!`, 
+              null, null, null, null, null, null, null, 
+              true,  // showRating
+              responseFile
+            )
+          } catch (e) {
+            console.error(`[${strategyName}] 분석 결과 파싱 실패:`, e)
+            const htmlContent = convertMarkdownToHtml(llmSummary)
+            pushBot(htmlContent, null, null, null, 'analyze')
+          }
+        }
+        
+        // 다중 전략 완료 후 다음 분석 안내
+        waitingForNewAnalysisResponse.value = true
+        pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
+        loading.value = false
+        stopLoadingTimer()
+        return
+      }
+      
+      // 단일 전략 - LLM 분석 결과 표시
       const llmSummary = data.analysis.llm_summary
       
       if (llmSummary) {
@@ -838,20 +1139,38 @@ const selectOption = async (opt) => {
           const htmlContent = convertMarkdownToHtml(markdown)
           pushBot(htmlContent, null, null, null, 'analyze')
           
+          // 별점 요청 메시지 추가
+          const responseFile = data.analysis.response_file || `llm_response_${Date.now()}.json`
+          pushBot(
+            '분석 결과에 만족하셨나요? 별점을 남겨주세요!', 
+            null, null, null, null, null, null, null, 
+            true,  // showRating
+            responseFile
+          )
+          
         } catch (e) {
           console.error('LLM 분석 결과 파싱 실패:', e)
           // fallback: 원본 텍스트 표시
           const htmlContent = convertMarkdownToHtml(llmSummary)
           pushBot(htmlContent, null, null, null, 'analyze')
+          
+          // 별점 요청 메시지 추가
+          const responseFile = data.analysis.response_file || `llm_response_${Date.now()}.json`
+          pushBot(
+            '분석 결과에 만족하셨나요? 별점을 남겨주세요!', 
+            null, null, null, null, null, null, null, 
+            true,  // showRating
+            responseFile
+          )
         }
       } else {
         // llm_summary가 없으면 기본 메시지
         pushBot('분석이 완료되었습니다.', null, null, null, 'analyze')
       }
       
-      // 추가 안내
-      waitingForNewAnalysisResponse.value = true
-      pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
+      // 별점 요청 후에는 "다른 상품 분석?" 메시지 제거
+      // waitingForNewAnalysisResponse.value = true
+      // pushBot('다른 상품에 대한 리뷰를 분석해 드릴까요?')
     } else if (data.next_question) {
       // 관련 리뷰가 있으면 먼저 표시
       if (data.related_reviews && data.related_reviews.length > 0) {
@@ -1428,6 +1747,45 @@ const handleUrlAnalysis = async (url) => {
   transform: scale(0.95);
   border: 1px solid var(--Colors-Blue-200, #C2E0FF);
   background: var(--Colors-Blue-100, #E4F2FF);
+}
+
+/* 별점 선택 UI */
+.rating-container {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 193, 7, 0.05);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.rating-stars {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rating-stars .star {
+  font-size: 2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  filter: grayscale(1);
+  opacity: 0.3;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rating-stars .star.filled {
+  filter: grayscale(0);
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+.rating-stars .star:hover {
+  transform: scale(1.3);
+}
+
+.rating-stars .star:active {
+  transform: scale(1.1);
 }
 
 .input-area {

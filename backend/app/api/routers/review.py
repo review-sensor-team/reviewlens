@@ -82,6 +82,22 @@ class AnswerQuestionRequest(BaseModel):
     factor_key: Optional[str] = None
 
 
+class RateResponseRequest(BaseModel):
+    """LLM 응답 평가 요청"""
+    response_file: str  # llm_response_default_20260118_123456.json
+    rating: int  # 1-5 별점
+    strategy: Optional[str] = None  # 다중 전략인 경우 어떤 전략인지
+    feedback: Optional[str] = None  # 선택적 피드백
+
+
+class RateResponseResponse(BaseModel):
+    """LLM 응답 평가 응답"""
+    success: bool
+    message: str
+    response_file: str
+    rating: int
+
+
 # === Helper Functions ===
 
 def _check_convergence(session_data: dict, min_turns: int = 3) -> bool:
@@ -1031,3 +1047,94 @@ async def answer_question(
     except Exception as e:
         logger.error(f"질문 답변 처리 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"질문 답변 처리 중 오류가 발생했습니다: {str(e)}")
+
+
+@router.post("/rate-response", response_model=RateResponseResponse)
+def rate_llm_response(
+    request: RateResponseRequest
+) -> RateResponseResponse:
+    """LLM 응답 평가
+    
+    사용자가 LLM 응답에 대해 별점(1-5)을 매기면,
+    해당 응답 파일에 평가 정보를 추가합니다.
+    
+    Args:
+        request: 평가 요청
+            - response_file: 응답 파일명
+            - rating: 1-5 별점
+            - strategy: (옵션) 전략 이름
+            - feedback: (옵션) 텍스트 피드백
+    
+    Returns:
+        평가 결과
+    """
+    try:
+        import json
+        from datetime import datetime
+        
+        # 파일 경로 구성
+        out_dir = Path("out")
+        response_path = out_dir / request.response_file
+        
+        if not response_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"응답 파일을 찾을 수 없습니다: {request.response_file}"
+            )
+        
+        # 별점 범위 검증
+        if not (1 <= request.rating <= 5):
+            raise HTTPException(
+                status_code=400,
+                detail="별점은 1-5 사이여야 합니다"
+            )
+        
+        # 기존 파일 읽기
+        with open(response_path, 'r', encoding='utf-8') as f:
+            response_data = json.load(f)
+        
+        # 평가 정보 추가
+        if "_user_rating" not in response_data:
+            response_data["_user_rating"] = {}
+        
+        rating_data = {
+            "rating": request.rating,
+            "rated_at": datetime.now().isoformat(),
+        }
+        
+        if request.strategy:
+            rating_data["strategy"] = request.strategy
+        
+        if request.feedback:
+            rating_data["feedback"] = request.feedback
+        
+        # 전략별로 평가 저장 (다중 전략 지원)
+        if request.strategy:
+            response_data["_user_rating"][request.strategy] = rating_data
+        else:
+            response_data["_user_rating"]["default"] = rating_data
+        
+        # 파일 업데이트
+        with open(response_path, 'w', encoding='utf-8') as f:
+            json.dump(response_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(
+            f"[평가 저장] 파일={request.response_file}, "
+            f"전략={request.strategy or 'default'}, 별점={request.rating}"
+        )
+        
+        return RateResponseResponse(
+            success=True,
+            message="평가가 저장되었습니다",
+            response_file=request.response_file,
+            rating=request.rating
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"평가 저장 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"평가 저장 중 오류가 발생했습니다: {str(e)}"
+        )

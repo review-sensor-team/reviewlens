@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     CLAUDE_MODEL: Optional[str] = None
     
     # Prompt 전략 설정 (.env에서 읽어옴)
-    PROMPT_STRATEGY: str = "default"  # default|concise|detailed|friendly 또는 쉼표로 구분하여 여러 개
+    PROMPT_STRATEGY: str = "detailed,friendly"  # default|concise|detailed|friendly 또는 쉼표로 구분하여 여러 개
     
     def get_prompt_strategies(self) -> List[str]:
         """PROMPT_STRATEGY를 파싱하여 전략 리스트 반환

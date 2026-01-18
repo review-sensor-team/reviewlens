@@ -430,6 +430,87 @@ PROMPT_STRATEGY=default,my_style
 📚 **상세 가이드**: 
 - [PROMPT_FACTORY_GUIDE.md](docs/PROMPT_FACTORY_GUIDE.md) - 프롬프트 팩토리 패턴
 - [MULTI_STRATEGY_GUIDE.md](docs/MULTI_STRATEGY_GUIDE.md) - 다중 전략 사용법
+- [LLM_RATING_GUIDE.md](docs/LLM_RATING_GUIDE.md) - LLM 응답 평가 시스템 🆕
+
+---
+
+## LLM 응답 평가 시스템 🆕
+
+### 개요
+
+사용자가 LLM 응답에 별점(1-5)을 매길 수 있습니다. A/B 테스트를 통해 최적의 프롬프트 전략을 데이터 기반으로 선택할 수 있습니다.
+
+### API 사용
+
+```bash
+# 1. 제품 분석 후 응답 파일명 확인
+curl -X POST http://localhost:8000/api/v2/reviews/analyze-product \
+  -H "Content-Type: application/json" \
+  -d '{"product_url": "...", "category_slug": "earbuds"}'
+
+# 응답: {"analysis": {"response_file": "llm_response_20260118_123456.json"}}
+
+# 2. 별점 평가
+curl -X POST http://localhost:8000/api/v2/reviews/rate-response \
+  -H "Content-Type: application/json" \
+  -d '{
+    "response_file": "llm_response_20260118_123456.json",
+    "rating": 5,
+    "feedback": "매우 명확하고 유용했습니다"
+  }'
+```
+
+### 다중 전략 평가
+
+```bash
+# 전략별로 각각 평가
+PROMPT_STRATEGY=default,friendly,concise
+
+# 각 전략의 response_file에 대해 평가
+curl -X POST .../rate-response -d '{
+  "response_file": "llm_response_default_20260118_123456.json",
+  "rating": 4,
+  "strategy": "default"
+}'
+
+curl -X POST .../rate-response -d '{
+  "response_file": "llm_response_friendly_20260118_123457.json",
+  "rating": 5,
+  "strategy": "friendly"
+}'
+```
+
+### 평가 데이터 분석
+
+```bash
+# 전략별 통계 분석
+python scripts/analyze_ratings.py
+```
+
+**출력 예시:**
+```
+📊 LLM 응답 평가 통계
+======================================================================
+
+🎯 전략: default
+   평가 수:        20
+   평균 별점:      4.15 ⭐
+   최고 별점:      5
+   최저 별점:      3
+   피드백 수:      18
+
+🎯 전략: friendly
+   평가 수:        18
+   평균 별점:      4.56 ⭐
+   최고 별점:      5
+   최저 별점:      4
+   피드백 수:      15
+
+✅ 추천 전략: friendly
+   평균 별점: 4.56 ⭐
+```
+
+**상세 가이드**: [LLM_RATING_GUIDE.md](docs/LLM_RATING_GUIDE.md)
 
 ---
 
