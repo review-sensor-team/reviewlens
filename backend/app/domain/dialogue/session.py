@@ -482,17 +482,23 @@ class DialogueSession:
             self.asked_questions.add(final_question)
         return final_question, None, None, None
 
-    def _generate_analysis(self, top_factors: List[Tuple[str, float]]) -> Dict:
-        """분석 결과 생성 (대화 종료 없이)"""
-        logger.info(f"[분석 생성] turn={self.turn_count}, top_factors={len(top_factors)}")
-        
-        # 1) 리뷰 스코어 계산(캐싱)
+    def _compute_review_scores(self):
+        """리뷰 스코어 계산 (캐싱)"""
         if self.scored_df is None or self.factor_counts is None:
             with Timer(scoring_duration_seconds, {'category': self.category}):
                 self.scored_df, self.factor_counts = compute_review_factor_scores(self.reviews_df, self.factors)
-
-        # 2) evidence 추출
+    
+    def _retrieve_evidence(self, top_factors: List[Tuple[str, float]]) -> List[Dict]:
+        """Evidence 리뷰 추출
+        
+        Args:
+            top_factors: 상위 factor 리스트
+            
+        Returns:
+            Evidence 리뷰 리스트
+        """
         from backend.app.core.settings import settings as app_settings
+        
         with Timer(retrieval_duration_seconds, {'category': self.category}):
             evidence = retrieve_evidence_reviews(
                 self.scored_df,
@@ -510,17 +516,16 @@ class DialogueSession:
         # 메트릭: evidence 수 기록
         total_evidence = len(evidence)
         evidence_count.labels(category=self.category).observe(total_evidence)
-
-        # 3) LLM 최종 요약 생성
-        llm_summary = self._generate_llm_summary(top_factors, evidence)
-
-        safety_rules = [
-            "가짜리뷰 여부를 단정하지 말 것",
-            "근거 리뷰는 짧게 인용할 것",
-            "의학/법률 조언 금지",
-        ]
-
-        calculation_info = {
+        
+        return evidence
+    
+    def _build_calculation_info(self) -> Dict:
+        """계산 정보 생성
+        
+        Returns:
+            계산 정보 딕셔너리
+        """
+        return {
             "total_turns": self.turn_count,
             "convergence": {
                 "method": "top3_jaccard",
@@ -542,8 +547,27 @@ class DialogueSession:
                 for f in self.factors
             ],
         }
-
-        llm_ctx_for_frontend = {
+    
+    def _build_frontend_context(self, top_factors: List[Tuple[str, float]], evidence: List[Dict], 
+                                 llm_summary: str, calculation_info: Dict) -> Dict:
+        """프론트엔드용 LLM 컨텍스트 구성
+        
+        Args:
+            top_factors: 상위 factor 리스트
+            evidence: Evidence 리뷰 리스트
+            llm_summary: LLM 요약
+            calculation_info: 계산 정보
+            
+        Returns:
+            프론트엔드용 컨텍스트 딕셔너리
+        """
+        safety_rules = [
+            "가짜리뷰 여부를 단정하지 말 것",
+            "근거 리뷰는 짧게 인용할 것",
+            "의학/법률 조언 금지",
+        ]
+        
+        return {
             "category_slug": self.category_slug,
             "dialogue_history": self.dialogue_history,
             "top_factors": [
@@ -571,7 +595,24 @@ class DialogueSession:
             "llm_summary": llm_summary,
         }
 
-        return llm_ctx_for_frontend
+    def _generate_analysis(self, top_factors: List[Tuple[str, float]]) -> Dict:
+        """분석 결과 생성 (대화 종료 없이)"""
+        logger.info(f"[분석 생성] turn={self.turn_count}, top_factors={len(top_factors)}")
+        
+        # 1) 리뷰 스코어 계산
+        self._compute_review_scores()
+
+        # 2) Evidence 추출
+        evidence = self._retrieve_evidence(top_factors)
+
+        # 3) LLM 요약 생성
+        llm_summary = self._generate_llm_summary(top_factors, evidence)
+
+        # 4) 계산 정보 구성
+        calculation_info = self._build_calculation_info()
+
+        # 5) 프론트엔드용 컨텍스트 반환
+        return self._build_frontend_context(top_factors, evidence, llm_summary, calculation_info)
 
     def finalize_now(self) -> BotTurn:
         """사용자 요청으로 명시적 대화 종료"""
