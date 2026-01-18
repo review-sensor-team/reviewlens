@@ -560,6 +560,62 @@ def _load_review_data(category: str, service: ReviewService):
     return service.normalize_reviews(review_df, vendor=vendor)
 
 
+def _extract_suggested_factors(top_factors: list, factors: list) -> list:
+    """Top factors에서 API 응답용 suggested factors 추출
+    
+    Args:
+        top_factors: [(factor_key, score), ...] 리스트
+        factors: Factor 객체 리스트
+        
+    Returns:
+        Suggested factors 리스트 (dict)
+    """
+    factor_map = {f.factor_key: f for f in factors}
+    return [
+        {
+            "factor_id": factor_map[factor_key].factor_id,
+            "factor_key": factor_key,
+            "display_name": factor_map[factor_key].display_name
+        }
+        for factor_key, score in top_factors
+    ]
+
+def _create_initial_dialogue(product_name: str, review_count: int, suggested_factors: list) -> list:
+    """초기 대화 내역 생성
+    
+    Args:
+        product_name: 상품명
+        review_count: 리뷰 개수
+        suggested_factors: Suggested factors 리스트
+        
+    Returns:
+        초기 대화 내역 (role, message 포함)
+    """
+    factor_list_text = "\n".join([
+        f"- {f['display_name']}"
+        for f in suggested_factors
+    ])
+    
+    analysis_message = f"{product_name} {review_count}건의 리뷰에서 후회 포인트를 분석했어요. 아래 항목 중 궁금한 걸 선택해주세요!"
+    
+    return [
+        {
+            "role": "assistant",
+            "message": f"{analysis_message}\n{factor_list_text}"
+        }
+    ]
+
+def _cache_session(session_id: str, session_cache_data: dict) -> None:
+    """세션 데이터를 메모리 캐시에 저장
+    
+    Args:
+        session_id: 세션 ID
+        session_cache_data: 캐싱할 세션 데이터
+    """
+    global _session_cache
+    _session_cache[session_id] = session_cache_data
+    logger.info(f"상품 분석 완료: {session_cache_data['product_name']} - 세션 캐싱 완료")
+
 def _create_session_data(session_id: str, product_name: str, category: str, category_name: str, 
                          normalized_df, analysis: dict, factors: list) -> dict:
     """세션 데이터 생성 및 캐싱
@@ -576,36 +632,10 @@ def _create_session_data(session_id: str, product_name: str, category: str, cate
     Returns:
         API 응답용 딕셔너리
     """
-    # Top factors 추출
-    factor_map = {f.factor_key: f for f in factors}
-    suggested_factors = [
-        {
-            "factor_id": factor_map[factor_key].factor_id,
-            "factor_key": factor_key,
-            "display_name": factor_map[factor_key].display_name
-        }
-        for factor_key, score in analysis["top_factors"]
-    ]
+    suggested_factors = _extract_suggested_factors(analysis["top_factors"], factors)
+    initial_dialogue = _create_initial_dialogue(product_name, len(normalized_df), suggested_factors)
     
-    # 초기 대화 내역 생성
-    factor_list_text = "\n".join([
-        f"- {f['display_name']}"
-        for f in suggested_factors
-    ])
-    
-    review_count = len(normalized_df)
-    analysis_message = f"{product_name} {review_count}건의 리뷰에서 후회 포인트를 분석했어요. 아래 항목 중 궁금한 걸 선택해주세요!"
-    
-    initial_dialogue = [
-        {
-            "role": "assistant",
-            "message": f"{analysis_message}\n{factor_list_text}"
-        }
-    ]
-    
-    # 세션 캐싱
-    global _session_cache
-    _session_cache[session_id] = {
+    session_cache_data = {
         "scored_df": analysis["scored_reviews_df"],
         "normalized_df": normalized_df,
         "factors": factors,
@@ -615,13 +645,13 @@ def _create_session_data(session_id: str, product_name: str, category: str, cate
         "dialogue_history": initial_dialogue
     }
     
-    logger.info(f"상품 분석 완료: {product_name} - {len(suggested_factors)}개 후회 포인트 (세션 캐싱 완료)")
+    _cache_session(session_id, session_cache_data)
     
     return {
         "session_id": session_id,
         "suggested_factors": suggested_factors,
         "product_name": product_name,
-        "total_count": review_count,
+        "total_count": len(normalized_df),
         "category": category,
         "category_name": category_name
     }
