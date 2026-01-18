@@ -288,6 +288,33 @@ class ReviewService:
         
         return df
     
+    def _aggregate_factor_scores(self, scored_df: pd.DataFrame, factors: List[Any]) -> Dict[str, float]:
+        """scored DataFrame에서 factor 점수 집계"""
+        factor_scores = {}
+        for factor in factors:
+            col_name = f"score_{factor.factor_key}"
+            if col_name in scored_df.columns:
+                total_score = scored_df[col_name].sum()
+                factor_scores[factor.factor_key] = total_score
+        return factor_scores
+    
+    def _get_top_factors(self, factor_scores: Dict[str, float], top_k: int) -> List[tuple]:
+        """상위 k개 factor 추출"""
+        top_factors = sorted(
+            factor_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:top_k]
+        logger.info(f"  - Top {top_k} factors: {[k for k, _ in top_factors]}")
+        return top_factors
+    
+    def _save_analysis_results(self, scored_df: pd.DataFrame, category: str, product_id: str) -> None:
+        """분석 결과를 저장소에 저장"""
+        storage = self._get_storage()
+        if storage:
+            storage.save_factor_scores(scored_df, category, product_id)
+            logger.info(f"  - 분석 결과 저장 완료")
+    
     def analyze_reviews(
         self,
         reviews_df: pd.DataFrame,
@@ -314,32 +341,18 @@ class ReviewService:
         
         logger.info(f"리뷰 분석: {len(reviews_df)}건, {len(factors)}개 factors")
         
-        # 1. Factor scoring (튜플 반환: scored_df, factor_counts)
+        # 1. Factor scoring
         scored_df, factor_counts = compute_review_factor_scores(reviews_df, factors)
         
         # 2. 전체 factor 점수 집계
-        factor_scores = {}
-        for factor in factors:
-            col_name = f"score_{factor.factor_key}"
-            if col_name in scored_df.columns:
-                total_score = scored_df[col_name].sum()
-                factor_scores[factor.factor_key] = total_score
+        factor_scores = self._aggregate_factor_scores(scored_df, factors)
         
         # 3. Top factors
-        top_factors = sorted(
-            factor_scores.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:top_k]
-        
-        logger.info(f"  - Top {top_k} factors: {[k for k, _ in top_factors]}")
+        top_factors = self._get_top_factors(factor_scores, top_k)
         
         # 4. Storage에 결과 저장 (옵션)
         if save_results and category and product_id:
-            storage = self._get_storage()
-            if storage:
-                storage.save_factor_scores(scored_df, category, product_id)
-                logger.info(f"  - 분석 결과 저장 완료")
+            self._save_analysis_results(scored_df, category, product_id)
         
         return {
             "scored_reviews_df": scored_df,
