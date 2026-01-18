@@ -454,6 +454,31 @@ def _load_factor_questions(factor_key: str) -> list:
     } for q in related_questions]
 
 
+def _calculate_term_stats(reviews: list, anchor_terms: dict) -> dict:
+    """매칭된 용어 통계 계산"""
+    term_stats = {}
+    for term in anchor_terms:
+        count = sum(1 for r in reviews if term in r.get('matched_terms', []))
+        if count > 0:
+            term_stats[term] = count
+    return term_stats
+
+def _create_review_summary_message(factor_display_name: str, term_stats: dict) -> str:
+    """리뷰 요약 메시지 생성"""
+    term_summary = ", ".join([
+        f"'{term}' {count}건" 
+        for term, count in sorted(term_stats.items(), key=lambda x: -x[1])
+    ])
+    return f'"{factor_display_name}"과 관련된 리뷰를 {term_summary}을 찾았어요.'
+
+def _add_to_dialogue_history(session_data: dict, user_message: str, assistant_message: str):
+    """대화 히스토리에 메시지 추가"""
+    if "dialogue_history" not in session_data:
+        session_data["dialogue_history"] = []
+    
+    session_data["dialogue_history"].append({"role": "user", "message": user_message})
+    session_data["dialogue_history"].append({"role": "assistant", "message": assistant_message})
+
 def _update_dialogue_with_factor_selection(session_id: str, target_factor, reviews: list, anchor_terms: dict, questions: list):
     """Factor 선택 시 대화 히스토리 업데이트
     
@@ -469,36 +494,18 @@ def _update_dialogue_with_factor_selection(session_id: str, target_factor, revie
     if session_id not in _session_cache:
         return
     
-    # 매칭된 용어 통계 생성
-    term_stats = {}
-    for term in anchor_terms:
-        count = sum(1 for r in reviews if term in r.get('matched_terms', []))
-        if count > 0:
-            term_stats[term] = count
+    session_data = _session_cache[session_id]
     
-    # 리뷰 요약 메시지
-    term_summary = ", ".join([
-        f"'{term}' {count}건" 
-        for term, count in sorted(term_stats.items(), key=lambda x: -x[1])
-    ])
-    review_summary = f'"{target_factor.display_name}"과 관련된 리뷰를 {term_summary}을 찾았어요.'
+    # 매칭된 용어 통계 및 요약 메시지 생성
+    term_stats = _calculate_term_stats(reviews, anchor_terms)
+    review_summary = _create_review_summary_message(target_factor.display_name, term_stats)
     
     # 대화 히스토리 업데이트
-    if "dialogue_history" not in _session_cache[session_id]:
-        _session_cache[session_id]["dialogue_history"] = []
-    
-    _session_cache[session_id]["dialogue_history"].append({
-        "role": "user", 
-        "message": target_factor.display_name
-    })
-    _session_cache[session_id]["dialogue_history"].append({
-        "role": "assistant", 
-        "message": review_summary
-    })
+    _add_to_dialogue_history(session_data, target_factor.display_name, review_summary)
     
     # 첫 번째 질문을 current_question에 저장
     if questions:
-        _session_cache[session_id]["current_question"] = questions[0]
+        session_data["current_question"] = questions[0]
         logger.info(f"current_question 저장: {questions[0].get('question_text', '')[:50]}")
     
     logger.info(f"대화 히스토리 업데이트: {target_factor.display_name} 선택")
