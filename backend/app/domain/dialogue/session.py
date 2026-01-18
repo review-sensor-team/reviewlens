@@ -436,6 +436,60 @@ class DialogueSession:
         candidates = self._collect_question_candidates(focus_factors)
         return self._select_best_question(candidates)
 
+    def _find_factor_by_name(
+        self, 
+        selected_factor: str, 
+        top_factors: List[Tuple[str, float]]
+    ) -> Optional[Any]:
+        """selected_factor 문자열로 Factor 객체 찾기
+        
+        시도 순서:
+        1) factor_key로 찾기
+        2) display_name으로 찾기
+        3) top_factors에서 partial match로 찾기
+        """
+        # 1) factor_key로 찾기
+        factor_obj = self.factors_map.get(selected_factor)
+        if factor_obj:
+            return factor_obj
+        
+        # 2) display_name으로 찾기
+        for f in self.factors:
+            if getattr(f, 'display_name', None) == selected_factor:
+                return f
+        
+        # 3) top_factors에서 찾기 (partial match)
+        for factor_key, _ in top_factors:
+            if factor_key == selected_factor or selected_factor in factor_key:
+                return self.factors_map.get(factor_key)
+        
+        return None
+
+    def _find_first_unasked_question(
+        self, 
+        factor_obj: Any
+    ) -> Tuple[str, Optional[str], str, Optional[List[str]]]:
+        """해당 factor의 첫 번째 미질문 찾기
+        
+        Returns:
+            (question_text, question_id, answer_type, choices)
+        """
+        for question in self.questions:
+            if question.factor_id == factor_obj.factor_id:
+                if question.question_text not in self.asked_questions:
+                    self.asked_questions.add(question.question_text)
+                    
+                    choices = None
+                    if question.choices and question.answer_type in ["single_choice", "multiple_choice"]:
+                        choices = [c.strip() for c in question.choices.split("|") if c.strip()]
+                    
+                    logger.info(f"  - factor '{factor_obj.factor_key}'의 첫 질문: q_id={question.question_id}, answer_type={question.answer_type}, choices={len(choices) if choices else 0}개")
+                    
+                    return question.question_text, str(question.question_id), question.answer_type or 'no_choice', choices
+        
+        logger.warning(f"  - factor '{factor_obj.factor_key}'의 질문이 없음, fallback 사용")
+        return self._fallback_question()
+
     def _pick_multiple_questions(self, selected_factor: str, top_factors: List[Tuple[str, float]]) -> Tuple[str, Optional[str], str, Optional[List[str]]]:
         """선택된 factor에 대한 첫 번째 질문을 반환 (choices 포함)
         
@@ -448,52 +502,13 @@ class DialogueSession:
         """
         logger.debug(f"  - selected_factor '{selected_factor}'의 질문들 검색 중...")
         
-        # selected_factor에 해당하는 Factor 객체 찾기
-        factor_obj = None
-        
-        # 1) factor_key로 찾기
-        factor_obj = self.factors_map.get(selected_factor)
-        
-        # 2) display_name으로 찾기
-        if not factor_obj:
-            for f in self.factors:
-                if getattr(f, 'display_name', None) == selected_factor:
-                    factor_obj = f
-                    break
-        
-        # 3) top_factors에서 찾기 (partial match)
-        if not factor_obj:
-            for factor_key, _ in top_factors:
-                if factor_key == selected_factor or selected_factor in factor_key:
-                    factor_obj = self.factors_map.get(factor_key)
-                    break
-        
+        factor_obj = self._find_factor_by_name(selected_factor, top_factors)
         if not factor_obj:
             logger.warning(f"  - factor '{selected_factor}' not found, fallback 사용")
             return self._fallback_question()
         
         logger.debug(f"    - factor 찾음: {factor_obj.factor_key} (id={factor_obj.factor_id})")
-        
-        # 해당 factor의 첫 번째 질문 찾기
-        for question in self.questions:
-            # factor_id로 매칭
-            if question.factor_id == factor_obj.factor_id:
-                # 이미 물어본 질문 제외
-                if question.question_text not in self.asked_questions:
-                    self.asked_questions.add(question.question_text)
-                    
-                    # choices 파싱
-                    choices = None
-                    if question.choices and question.answer_type in ["single_choice", "multiple_choice"]:
-                        choices = [c.strip() for c in question.choices.split("|") if c.strip()]
-                    
-                    logger.info(f"  - factor '{factor_obj.factor_key}'의 첫 질문: q_id={question.question_id}, answer_type={question.answer_type}, choices={len(choices) if choices else 0}개")
-                    
-                    # 질문 + choices 반환
-                    return question.question_text, str(question.question_id), question.answer_type or 'no_choice', choices
-        
-        logger.warning(f"  - factor '{factor_obj.factor_key}'의 질문이 없음, fallback 사용")
-        return self._fallback_question()
+        return self._find_first_unasked_question(factor_obj)
     
     def _fallback_question(self) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
         """카테고리별 기본 질문 반환
