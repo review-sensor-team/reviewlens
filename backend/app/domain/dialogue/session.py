@@ -117,26 +117,19 @@ class DialogueSession:
 
     # ----------------------------- public -----------------------------
 
-    def step(self, user_message: str, selected_factor: Optional[str] = None) -> BotTurn:
-        """사용자 메시지 처리 및 다음 질문 생성
+    def _update_factor_scores(self, user_message: str) -> List[str]:
+        """사용자 메시지로 factor 점수 업데이트
         
         Args:
             user_message: 사용자 메시지
-            selected_factor: 선택된 후회 포인트 (display_name 또는 factor_key)
+            
+        Returns:
+            매칭된 factor_key 리스트
         """
-        self.turn_count += 1
-        logger.info(f"[턴 {self.turn_count}] 사용자 메시지: {user_message[:50]}..., selected_factor={selected_factor}")
-        
-        # 메트릭: 대화 턴 카운트
-        dialogue_turns_total.labels(category=self.category).inc()
-
-        # 히스토리: user
-        self.dialogue_history.append({"role": "user", "message": user_message})
-
-        # 1) 사용자 메시지로 factor 점수 누적(negation 감점 X)
         norm = normalize_text(user_message)
         logger.debug(f"  - 정규화된 메시지: {norm}")
         matched_factors = []
+        
         for f in self.factors:
             base = 0.0
             if any(t in norm for t in f.anchor_terms):
@@ -153,31 +146,53 @@ class DialogueSession:
         
         if matched_factors:
             logger.debug(f"  - 매칭된 factors: {matched_factors}")
-
-        # 2) 상위 요인 계산(top3)
-        top_factors = self._get_top_factors(top_k=3)
-        logger.debug(f"  - 상위 3 factors: {[(k, round(s, 2)) for k, s in top_factors]}")
-
-        # 3) 수렴(안정성) 체크: top3 Jaccard
+        
+        return matched_factors
+    
+    def _check_stability(self, top_factors: List[Tuple[str, float]]) -> float:
+        """수렴 안정성 체크 (Jaccard 유사도)
+        
+        Args:
+            top_factors: 상위 factor 리스트
+            
+        Returns:
+            Jaccard 유사도
+        """
         cur_top3 = [k for k, _ in top_factors]
         sim = _jaccard(cur_top3, self.prev_top3) if self.prev_top3 else 0.0
+        
         from backend.app.core.settings import settings
-        if sim >= settings.DIALOGUE_JACCARD_THRESHOLD:  # 3개 중 2개 이상 같으면 안정
+        if sim >= settings.DIALOGUE_JACCARD_THRESHOLD:
             self.stability_hits += 1
         else:
             self.stability_hits = 1
+        
         self.prev_top3 = cur_top3
         logger.debug(f"  - 안정성: sim={sim:.2f}, hits={self.stability_hits}")
-
-        # 4) 분석 준비 여부 체크
-        # - 최소 턴 이상이면 분석 결과 제공 (안정성 조건 제거)
-        # - 분석 제공 후에도 대화는 계속 가능
-        should_provide_analysis = (self.turn_count >= settings.DIALOGUE_MIN_ANALYSIS_TURNS)
-        logger.info(f"  - 분석 체크: should_provide_analysis={should_provide_analysis} (turn={self.turn_count}, stability={self.stability_hits})")
-
-        # 5) 다음 질문 생성
-        # - selected_factor가 있으면 해당 factor의 여러 질문을 choices로 반환
-        # - 없으면 일반 질문 1개 생성
+        
+        return sim
+    
+    def _should_provide_analysis(self) -> bool:
+        """분석 제공 여부 판단
+        
+        Returns:
+            분석 제공 여부
+        """
+        from backend.app.core.settings import settings
+        should_provide = (self.turn_count >= settings.DIALOGUE_MIN_ANALYSIS_TURNS)
+        logger.info(f"  - 분석 체크: should_provide_analysis={should_provide} (turn={self.turn_count}, stability={self.stability_hits})")
+        return should_provide
+    
+    def _generate_next_question(self, selected_factor: Optional[str], top_factors: List[Tuple[str, float]]) -> Tuple[str, Optional[str], Optional[str], Optional[List[str]]]:
+        """다음 질문 생성
+        
+        Args:
+            selected_factor: 선택된 factor (있으면 해당 factor의 여러 질문 반환)
+            top_factors: 상위 factor 리스트
+            
+        Returns:
+            (question_text, question_id, answer_type, choices)
+        """
         if selected_factor:
             question_text, question_id, answer_type, choices = self._pick_multiple_questions(selected_factor, top_factors)
             logger.info(f"  - 선택된 factor '{selected_factor}'의 질문 {len(choices or [])}개 생성")
@@ -185,11 +200,45 @@ class DialogueSession:
             question_text, question_id, answer_type, choices = self._pick_next_question(top_factors)
             logger.info(f"  - 다음 질문: {question_id or 'N/A'} ({answer_type or 'no_choice'})")
             logger.debug(f"    질문 텍스트: {question_text[:50]}...")
+        
+        return question_text, question_id, answer_type, choices
+
+    def step(self, user_message: str, selected_factor: Optional[str] = None) -> BotTurn:
+        """사용자 메시지 처리 및 다음 질문 생성
+        
+        Args:
+            user_message: 사용자 메시지
+            selected_factor: 선택된 후회 포인트 (display_name 또는 factor_key)
+        """
+        self.turn_count += 1
+        logger.info(f"[턴 {self.turn_count}] 사용자 메시지: {user_message[:50]}..., selected_factor={selected_factor}")
+        
+        # 메트릭: 대화 턴 카운트
+        dialogue_turns_total.labels(category=self.category).inc()
+
+        # 히스토리: user
+        self.dialogue_history.append({"role": "user", "message": user_message})
+
+        # 1) 사용자 메시지로 factor 점수 업데이트
+        self._update_factor_scores(user_message)
+
+        # 2) 상위 요인 계산 (top3)
+        top_factors = self._get_top_factors(top_k=3)
+        logger.debug(f"  - 상위 3 factors: {[(k, round(s, 2)) for k, s in top_factors]}")
+
+        # 3) 수렴 안정성 체크
+        self._check_stability(top_factors)
+
+        # 4) 분석 준비 여부 체크
+        should_provide_analysis = self._should_provide_analysis()
+
+        # 5) 다음 질문 생성
+        question_text, question_id, answer_type, choices = self._generate_next_question(selected_factor, top_factors)
 
         # 히스토리: assistant
         self.dialogue_history.append({"role": "assistant", "message": question_text})
 
-        # 6) 분석이 준비되었으면 LLM 컨텍스트 생성 (대화는 계속)
+        # 6) 분석이 준비되었으면 LLM 컨텍스트 생성
         llm_context = None
         has_analysis = False
         if should_provide_analysis:
@@ -200,7 +249,7 @@ class DialogueSession:
         return BotTurn(
             question_text=question_text,
             top_factors=top_factors,
-            is_final=False,  # 대화는 계속 가능
+            is_final=False,
             llm_context=llm_context,
             has_analysis=has_analysis,
             question_id=question_id,
