@@ -1,7 +1,7 @@
 # ReviewLens V2
 ### 후회를 줄이기 위한 대화형 리뷰 분석 챗봇
 
-> **V2 업데이트 (2026-01-17)**: Clean Architecture 적용, 3-5턴 대화 플로우 완성
+> **V2 업데이트 (2026-01-18)**: Clean Architecture 재구성 완료, 코드 품질 개선
 
 ---
 
@@ -14,11 +14,25 @@
 
 ## 주요 변경사항 (V2)
 
-### ✅ Clean Architecture 적용
-- **Domain Layer**: 비즈니스 로직 (review, dialogue, reg)
-- **Infrastructure Layer**: 외부 연동 (observability, session)
+### ✅ Clean Architecture 재구성 (2026-01-18)
+- **Domain Layer**:
+  - `domain/entities/` - 순수 도메인 엔티티 (향후 확장)
+  - `domain/rules/review/` - 도메인 비즈니스 규칙 (normalize, scoring, retrieval)
+- **Use Cases Layer**:
+  - `usecases/dialogue/` - DialogueSession (3-5턴 대화 로직)
+- **Adapters Layer**:
+  - `adapters/persistence/reg/` - Factor/Question CSV 로딩
+- **Infrastructure Layer**: 외부 연동 (observability, collectors, storage)
 - **API Layer**: REST 엔드포인트 (v2)
-- **332KB 중복 코드 제거**: legacy 폴더로 이동
+
+### ✅ 코드 품질 개선
+- **함수 리팩토링**: 14개 대형 함수 분리 (평균 60+ 라인 → 20-30 라인)
+  - DialogueSession: 7개 함수 (66% 코드 감소)
+  - ReviewService: 3개 함수 (48% 코드 감소)
+  - review.py: 4개 함수 (46% 코드 감소)
+- **중복 코드 제거**: 64줄의 중복 상수를 constants.py로 통합
+- **Import 최적화**: 모든 내부 import를 파일 상단으로 이동
+- **Legacy 정리**: 332KB 미사용 코드를 legacy 폴더로 이동
 
 ### ✅ 3-5턴 대화 플로우
 - 질문별 question_id 추적
@@ -26,7 +40,7 @@
 - Fallback 질문 시스템 (카테고리별 10개)
 - LLM 분석 통합 (GPT-4o-mini)
 
-### ✅ API 구조 개선
+### ✅ API 구조
 - `/api/v2/reviews/*` - V2 Clean Architecture 엔드포인트
 - 세션 기반 상태 관리 (in-memory cache)
 - 증거 리뷰 추출 최적화

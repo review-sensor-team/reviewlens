@@ -1,5 +1,8 @@
 # ReviewLens 인터페이스 명세서
 
+> **최종 업데이트**: 2026-01-18  
+> **아키텍처**: Clean Architecture (Use Cases / Domain / Adapters)
+
 각 개발 영역 간 주고받는 데이터 인터페이스를 정의합니다.
 
 ## 목차
@@ -10,6 +13,21 @@
 - [4. Dialogue Engine ↔ Retrieval Pipeline](#4-dialogue-engine--retrieval-pipeline)
 - [5. 크롤러 ↔ 백엔드](#5-크롤러--백엔드)
 - [6. 백엔드 ↔ Monitoring](#6-백엔드--monitoring)
+
+## 아키텍처 레이어 매핑
+
+### Use Cases Layer
+- **DialogueSession** (`usecases/dialogue/session.py`): 3-5턴 대화 로직
+- **DialogueContext** (`usecases/dialogue/types.py`): 대화 상태 관리
+
+### Domain Layer
+- **normalize** (`domain/rules/review/normalize.py`): 리뷰 텍스트 정규화
+- **scoring** (`domain/rules/review/scoring.py`): Factor 스코어링
+- **retrieval** (`domain/rules/review/retrieval.py`): 증거 리뷰 추출
+
+### Adapters Layer
+- **RegStore** (`adapters/persistence/reg/store.py`): Factor/Question CSV 로딩
+- **FactorMatcher** (`adapters/persistence/reg/matching.py`): Factor 매칭
 
 ---
 
