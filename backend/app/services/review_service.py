@@ -173,7 +173,52 @@ class ReviewService:
         
         logger.info(f"사용 가능한 상품: {len(products)}개")
         return products
+    
+    def _load_from_storage(self, vendor: str, product_id: str) -> Optional[pd.DataFrame]:
+        """저장소에서 리뷰 로드"""
+        storage = self._get_storage()
+        if not storage:
+            return None
         
+        cached_df = storage.load_reviews(vendor=vendor, product_id=product_id)
+        if cached_df is not None:
+            logger.info(f"  - Storage에서 로드: {len(cached_df)}건")
+        return cached_df
+    
+    def _collect_from_crawler(self, vendor: str, product_id: str, product_url: str, max_reviews: int) -> Optional[pd.DataFrame]:
+        """크롤러로 리뷰 수집"""
+        try:
+            if vendor == "smartstore":
+                from ..infra.collectors.smartstore import SmartStoreCollector
+                collector = SmartStoreCollector(product_url=product_url, headless=True)
+                reviews, _ = collector.collect_reviews(max_reviews=max_reviews)
+                
+                reviews_df = pd.DataFrame(reviews)
+                
+                # Storage에 저장
+                storage = self._get_storage()
+                if storage:
+                    storage.save_reviews(reviews_df, vendor, product_id, suffix="collected")
+                
+                logger.info(f"  - 크롤링 완료: {len(reviews_df)}건")
+                return reviews_df
+            else:
+                logger.warning(f"지원하지 않는 vendor: {vendor}")
+        except Exception as e:
+            logger.error(f"크롤링 실패: {e}", exc_info=True)
+        
+        return None
+    
+    def _create_collect_result(self, product_id: str, vendor: str, reviews_df: pd.DataFrame, source: str) -> Dict[str, Any]:
+        """리뷰 수집 결과 딕셔너리 생성"""
+        return {
+            "product_id": product_id,
+            "vendor": vendor,
+            "review_count": len(reviews_df),
+            "reviews_df": reviews_df,
+            "source": source
+        }
+    
     def collect_reviews(
         self,
         product_id: str,
@@ -197,58 +242,22 @@ class ReviewService:
         logger.info(f"리뷰 수집 시작: {vendor}/{product_id} (max={max_reviews}, use_collector={use_collector})")
         
         # 1. Storage에서 기존 데이터 확인
-        storage = self._get_storage()
-        if storage and not use_collector:
-            cached_df = storage.load_reviews(vendor=vendor, product_id=product_id)
+        if not use_collector:
+            cached_df = self._load_from_storage(vendor, product_id)
             if cached_df is not None:
-                logger.info(f"  - Storage에서 로드: {len(cached_df)}건")
-                return {
-                    "product_id": product_id,
-                    "vendor": vendor,
-                    "review_count": len(cached_df),
-                    "reviews_df": cached_df,
-                    "source": "storage"
-                }
+                return self._create_collect_result(product_id, vendor, cached_df, "storage")
         
         # 2. Collector 사용 (실제 크롤링)
         if use_collector and product_url:
-            try:
-                if vendor == "smartstore":
-                    from ..infra.collectors.smartstore import SmartStoreCollector
-                    collector = SmartStoreCollector(product_url=product_url, headless=True)
-                    reviews, _ = collector.collect_reviews(max_reviews=max_reviews)
-                    
-                    # DataFrame 변환
-                    reviews_df = pd.DataFrame(reviews)
-                    
-                    # Storage에 저장
-                    if storage:
-                        storage.save_reviews(reviews_df, vendor, product_id, suffix="collected")
-                    
-                    logger.info(f"  - 크롤링 완료: {len(reviews_df)}건")
-                    return {
-                        "product_id": product_id,
-                        "vendor": vendor,
-                        "review_count": len(reviews_df),
-                        "reviews_df": reviews_df,
-                        "source": "collector"
-                    }
-                else:
-                    logger.warning(f"지원하지 않는 vendor: {vendor}")
-            except Exception as e:
-                logger.error(f"크롤링 실패: {e}", exc_info=True)
+            collected_df = self._collect_from_crawler(vendor, product_id, product_url, max_reviews)
+            if collected_df is not None:
+                return self._create_collect_result(product_id, vendor, collected_df, "collector")
         
         # 3. 샘플 데이터 로드 (fallback)
         reviews_df = self._load_sample_reviews()
         logger.info(f"  - 샘플 데이터 로드: {len(reviews_df)}건")
         
-        return {
-            "product_id": product_id,
-            "vendor": vendor,
-            "review_count": len(reviews_df),
-            "reviews_df": reviews_df,
-            "source": "sample"
-        }
+        return self._create_collect_result(product_id, vendor, reviews_df, "sample")
     
     def normalize_reviews(self, reviews_df: pd.DataFrame, vendor: str = "smartstore") -> pd.DataFrame:
         """리뷰 정규화 및 중복 제거
