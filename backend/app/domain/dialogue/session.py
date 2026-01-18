@@ -759,89 +759,113 @@ class DialogueSession:
     ) -> str:
         """LLM을 사용하여 최종 분석 요약 생성"""
         try:
-            from backend.llm.llm_factory import get_llm_client
-            from ...infra.observability.metrics import llm_calls_total, llm_duration_seconds, Timer
-            from ...core.settings import settings
-            import json
-            from datetime import datetime
-            from pathlib import Path
-            
-            # 카테고리 이름 가져오기
-            category_names = {
-                "electronics_coffee_machine": "커피머신",
-                "robot_cleaner": "로봇청소기",
-                "appliance_induction": "인덕션",
-                "appliance_bedding_cleaner": "침구청소기",
-                "humidifier": "가습기",
-                "appliance_heated_humidifier": "가열식 가습기",
-                "furniture_bookshelf": "책장",
-                "furniture_chair": "의자",
-                "furniture_desk": "책상",
-                "furniture_mattress": "매트리스",
-                "applestore_electronics_earphone": "이어폰",
-            }
-            category_name = category_names.get(self.category, self.category)
-            
-            # 제품명 (세션에 저장되어 있다면 가져오기, 없으면 기본값)
-            product_name = getattr(self, 'product_name', "이 제품")
-            
-            # LLM 컨텍스트 준비
-            llm_context = {
-                "top_factors": top_factors,
-                "evidence_reviews": evidence_reviews,
-                "total_turns": self.turn_count,
-                "category_name": category_name,
-                "product_name": product_name,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            # 타임스탬프 생성
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            # out 디렉토리 생성
-            out_dir = Path("out")
-            out_dir.mkdir(exist_ok=True)
-            
-            # LLM 컨텍스트 저장
-            context_file = out_dir / f"llm_context_{timestamp}.json"
-            with open(context_file, "w", encoding="utf-8") as f:
-                json.dump(llm_context, f, ensure_ascii=False, indent=2)
-            logger.info(f"[LLM 컨텍스트 저장] {context_file}")
-            
-            llm_client = get_llm_client()
-            provider = settings.LLM_PROVIDER
-            
-            # LLM 호출 시간 측정
-            with Timer(llm_duration_seconds, {'provider': provider}):
-                summary = llm_client.generate_summary(
-                    top_factors=top_factors,
-                    evidence_reviews=evidence_reviews,
-                    total_turns=self.turn_count,
-                    category_name=category_name,
-                    product_name=product_name,
-                    dialogue_history=self.dialogue_history
-                )
-            
-            # 메트릭: LLM 호출 성공
-            llm_calls_total.labels(provider=provider, status='success').inc()
-            
-            logger.info(f"[LLM 요약 생성 완료] {len(summary)}자")
-            return summary
-            
+            llm_context = self._prepare_llm_context(top_factors, evidence_reviews)
+            self._save_llm_context(llm_context)
+            return self._call_llm_generate_summary(llm_context, top_factors, evidence_reviews)
         except Exception as e:
-            logger.error(f"[LLM 요약 생성 실패] {e}", exc_info=True)
-            import traceback
-            logger.error(f"[스택트레이스]\n{traceback.format_exc()}")
-            
-            # 메트릭: LLM 호출 에러 (provider 정보 시도)
-            try:
-                from ..app.core.settings import settings
-                provider = settings.LLM_PROVIDER
-            except:
-                provider = 'unknown'
-            llm_calls_total.labels(provider=provider, status='error').inc()
-            
-            # 폴백: 간단한 기본 메시지
-            llm_calls_total.labels(provider=provider, status='fallback').inc()
-            factors_text = ", ".join([key for key, _ in top_factors[:3]])
-            return f"주요 후회 요인: {factors_text}. 구매 전 이 요인들을 꼭 확인하세요."
+            return self._fallback_summary(top_factors, e)
+
+    def _get_category_display_name(self) -> str:
+        """카테고리 슬러그를 한국어 표시명으로 변환"""
+        category_names = {
+            "electronics_coffee_machine": "커피머신",
+            "robot_cleaner": "로봇청소기",
+            "appliance_induction": "인덕션",
+            "appliance_bedding_cleaner": "침구청소기",
+            "humidifier": "가습기",
+            "appliance_heated_humidifier": "가열식 가습기",
+            "furniture_bookshelf": "책장",
+            "furniture_chair": "의자",
+            "furniture_desk": "책상",
+            "furniture_mattress": "매트리스",
+            "applestore_electronics_earphone": "이어폰",
+        }
+        return category_names.get(self.category, self.category)
+
+    def _prepare_llm_context(
+        self, 
+        top_factors: List[Tuple[str, float]], 
+        evidence_reviews: List[Dict]
+    ) -> Dict:
+        """LLM 호출을 위한 컨텍스트 딕셔너리 준비"""
+        from datetime import datetime
+        
+        category_name = self._get_category_display_name()
+        product_name = getattr(self, 'product_name', "이 제품")
+        
+        return {
+            "top_factors": top_factors,
+            "evidence_reviews": evidence_reviews,
+            "total_turns": self.turn_count,
+            "category_name": category_name,
+            "product_name": product_name,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def _save_llm_context(self, llm_context: Dict) -> None:
+        """LLM 컨텍스트를 JSON 파일로 저장"""
+        import json
+        from datetime import datetime
+        from pathlib import Path
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_dir = Path("out")
+        out_dir.mkdir(exist_ok=True)
+        
+        context_file = out_dir / f"llm_context_{timestamp}.json"
+        with open(context_file, "w", encoding="utf-8") as f:
+            json.dump(llm_context, f, ensure_ascii=False, indent=2)
+        logger.info(f"[LLM 컨텍스트 저장] {context_file}")
+
+    def _call_llm_generate_summary(
+        self, 
+        llm_context: Dict,
+        top_factors: List[Tuple[str, float]], 
+        evidence_reviews: List[Dict]
+    ) -> str:
+        """LLM 클라이언트를 호출하여 요약 생성 (메트릭 기록 포함)"""
+        from backend.llm.llm_factory import get_llm_client
+        from ...infra.observability.metrics import llm_calls_total, llm_duration_seconds, Timer
+        from ...core.settings import settings
+        
+        llm_client = get_llm_client()
+        provider = settings.LLM_PROVIDER
+        
+        with Timer(llm_duration_seconds, {'provider': provider}):
+            summary = llm_client.generate_summary(
+                top_factors=top_factors,
+                evidence_reviews=evidence_reviews,
+                total_turns=self.turn_count,
+                category_name=llm_context["category_name"],
+                product_name=llm_context["product_name"],
+                dialogue_history=self.dialogue_history
+            )
+        
+        llm_calls_total.labels(provider=provider, status='success').inc()
+        logger.info(f"[LLM 요약 생성 완료] {len(summary)}자")
+        return summary
+
+    def _fallback_summary(
+        self, 
+        top_factors: List[Tuple[str, float]], 
+        error: Exception
+    ) -> str:
+        """LLM 호출 실패 시 폴백 요약 메시지 생성"""
+        from ...infra.observability.metrics import llm_calls_total
+        import traceback
+        
+        logger.error(f"[LLM 요약 생성 실패] {error}", exc_info=True)
+        logger.error(f"[스택트레이스]\n{traceback.format_exc()}")
+        
+        # 메트릭: LLM 호출 에러
+        try:
+            from ...core.settings import settings
+            provider = settings.LLM_PROVIDER
+        except:
+            provider = 'unknown'
+        
+        llm_calls_total.labels(provider=provider, status='error').inc()
+        llm_calls_total.labels(provider=provider, status='fallback').inc()
+        
+        factors_text = ", ".join([key for key, _ in top_factors[:3]])
+        return f"주요 후회 요인: {factors_text}. 구매 전 이 요인들을 꼭 확인하세요."
