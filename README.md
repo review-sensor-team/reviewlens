@@ -357,7 +357,7 @@ docker-compose -f docker-compose.monitoring.yml up -d
 
 프롬프트를 코드 변경 없이 자유롭게 실험할 수 있습니다!
 
-### 전략 선택
+### 단일 전략 선택
 
 `.env` 파일:
 ```bash
@@ -374,6 +374,39 @@ PROMPT_STRATEGY=detailed
 PROMPT_STRATEGY=friendly
 ```
 
+### 다중 전략 (동시 실행) 🆕
+
+```bash
+# 기본 + 친근한 스타일 동시에
+PROMPT_STRATEGY=default,friendly
+
+# 간결 + 상세 비교
+PROMPT_STRATEGY=concise,detailed
+
+# 3개 전략 A/B/C 테스트
+PROMPT_STRATEGY=default,concise,friendly
+```
+
+**주의**: 전략 개수만큼 LLM API 호출 → 비용 증가!
+
+### 응답 형식
+
+**단일 전략**:
+```json
+{"llm_summary": "{JSON 분석 결과}"}
+```
+
+**다중 전략**:
+```json
+{
+  "llm_summaries": [
+    {"strategy": "default", "summary": "{...}"},
+    {"strategy": "friendly", "summary": "{...}"}
+  ],
+  "llm_summary": "{첫 번째 전략}"  // 호환성
+}
+```
+
 ### 커스텀 프롬프트 만들기
 
 `backend/llm/prompts/my_style.yaml` 생성:
@@ -387,7 +420,17 @@ user_prompt_template: |
   ...
 ```
 
-📚 **상세 가이드**: [PROMPT_FACTORY_GUIDE.md](docs/PROMPT_FACTORY_GUIDE.md)
+사용:
+```bash
+PROMPT_STRATEGY=my_style
+# 또는 다중으로
+PROMPT_STRATEGY=default,my_style
+```
+
+📚 **상세 가이드**: 
+- [PROMPT_FACTORY_GUIDE.md](docs/PROMPT_FACTORY_GUIDE.md) - 프롬프트 팩토리 패턴
+- [MULTI_STRATEGY_GUIDE.md](docs/MULTI_STRATEGY_GUIDE.md) - 다중 전략 사용법
+
 ---
 
 ## 향후 확장
