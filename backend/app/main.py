@@ -28,7 +28,7 @@ else:
 
 # 로깅 시스템 초기화
 setup_logging()
-logger = logging.getLogger("api")
+logger = logging.getLogger(__name__)
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
@@ -124,9 +124,10 @@ def create_app() -> FastAPI:
     )
 
     # Register routers - V2 Clean Architecture only
-    from .api.routers import health, review
-    app.include_router(health.router, tags=["monitoring"])
+    from .api.routers import metrics, review, chat
+    app.include_router(metrics.router, tags=["monitoring"])
     app.include_router(review.router, tags=["reviews"])
+    app.include_router(chat.router, tags=["chat"])
     
     logger.info("API 라우터 등록 완료")
     logger.info(f"CORS 허용 도메인: {settings.ALLOWED_ORIGINS}")

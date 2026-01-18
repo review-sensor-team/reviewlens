@@ -1,6 +1,6 @@
 # ReviewLens V2 시스템 아키텍처
 
-> **V2 업데이트 (2026-01-17)**: Clean Architecture 적용, 레거시 제거, 3-5턴 대화 플로우 완성
+> **V2 업데이트 (2026-01-18)**: Clean Architecture 재구성 완료, 레거시 정리, 코드 품질 개선
 
 ReviewLens는 제품 리뷰를 분석하여 구매 후회 요인을 찾아내는 대화형 AI 시스템입니다.
 
@@ -24,19 +24,27 @@ V2는 Clean Architecture 원칙을 따라 다음과 같이 계층을 분리했�
 graph TB
     subgraph "API Layer"
         A1[review.py<br/>V2 엔드포인트]
-        A2[health.py<br/>Health check]
+        A2[metrics.py<br/>모니터링]
     end
     
-    subgraph "Domain Layer<br/>(비즈니스 로직)"
-        D1[dialogue/session.py<br/>대화 엔진]
-        D2[review/scoring.py<br/>Factor 점수]
-        D3[review/retrieval.py<br/>증거 추출]
-        D4[reg/store.py<br/>CSV 로딩]
+    subgraph "Use Cases Layer"
+        U1[dialogue/session.py<br/>대화 엔진 3-5턴]
+    end
+    
+    subgraph "Domain Layer"
+        D1[rules/review/scoring.py<br/>Factor 점수 계산]
+        D2[rules/review/retrieval.py<br/>증거 리뷰 추출]
+        D3[rules/review/normalize.py<br/>리뷰 정규화]
+    end
+    
+    subgraph "Adapters Layer"
+        AD1[persistence/reg/store.py<br/>CSV 로딩]
     end
     
     subgraph "Infrastructure Layer"
         I1[observability/metrics.py<br/>Prometheus]
-        I2[session/store.py<br/>세션 저장]
+        I2[collectors/<br/>SmartStore 크롤러]
+        I3[storage/<br/>CSV 저장]
     end
     
     subgraph "External"
@@ -45,25 +53,144 @@ graph TB
         E3[Review JSON<br/>사전 수집]
     end
     
-    A1 --> D1
-    A1 --> D2
-    A1 --> D3
-    D1 --> D4
-    D1 --> E1
-    D2 --> E2
-    D3 --> E3
+    A1 --> U1
+    U1 --> D1
+    U1 --> D2
+    U1 --> D3
+    U1 --> AD1
+    U1 --> E1
+    D1 --> AD1
+    D2 --> AD1
+    AD1 --> E2
     A1 --> I1
     A1 --> I2
+    A1 --> I3
 ```
 
 ### 핵심 원칙
 - **의존성 역전**: Domain은 Infrastructure를 알지 못함
-- **단일 책임**: 각 모듈은 하나의 책임만
+- **단일 책임**: 각 모듈은 하나의 책임만 (평균 함수 크기 31 lines)
 - **테스트 용이성**: Domain 로직은 순수 Python (FastAPI 의존성 없음)
+- **레이어 분리**: Use Cases ↔ Domain ↔ Adapters 명확한 경계
 
 ---
 
 ## 계층별 구조
+
+### 1. API Layer (Presentation)
+```
+backend/app/api/
+  └── routers/
+      ├── review.py      # V2 리뷰 분석 엔드포인트
+      └── metrics.py     # Prometheus 메트릭
+```
+
+**책임**: HTTP 요청/응답 처리, 세션 관리
+
+---
+
+### 2. Use Cases Layer (Application)
+```
+backend/app/usecases/
+  └── dialogue/
+      ├── session.py     # DialogueSession (3-5턴 대화 로직)
+      ├── constants.py   # Fallback 질문 상수
+      └── types.py       # 대화 관련 타입
+```
+
+**책임**: 비즈니스 유스케이스 구현, 대화 흐름 제어
+
+**주요 기능**:
+- 3-5턴 대화 수렴
+- Factor 안정성 추적
+- LLM 호출 및 분석 생성
+
+---
+
+### 3. Domain Layer (Business Logic)
+```
+backend/app/domain/
+  ├── entities/         # 순수 도메인 엔티티 (향후 확장)
+  └── rules/
+      └── review/
+          ├── normalize.py    # 리뷰 정규화, 중복 제거
+          ├── scoring.py      # Factor 점수 계산
+          └── retrieval.py    # 증거 리뷰 검색
+```
+
+**책임**: 핵심 비즈니스 규칙, 도메인 로직
+
+**주요 함수**:
+- `normalize_review()`: 리뷰 텍스트 정규화
+- `compute_review_factor_scores()`: Factor 매칭 및 점수 계산
+- `retrieve_evidence_reviews()`: 상위 Factor별 증거 추출
+
+---
+
+### 4. Adapters Layer (Infrastructure Interface)
+```
+backend/app/adapters/
+  └── persistence/
+      └── reg/
+          ├── store.py       # Factor/Question CSV 로딩
+          └── matching.py    # Factor 매칭 로직
+```
+
+**책임**: 외부 데이터 소스 접근
+
+**주요 엔티티**:
+- `Factor`: 후회 요인 정의 (anchor_terms, context_terms, etc.)
+- `Question`: 대화 질문 정의
+
+---
+
+### 5. Infrastructure Layer
+```
+backend/app/infra/
+  ├── observability/
+  │   └── metrics.py         # Prometheus 메트릭
+  ├── collectors/
+  │   └── smartstore.py      # 네이버 스마트스토어 크롤러
+  ├── storage/
+  │   └── csv_storage.py     # CSV 파일 저장
+  └── cache/
+      └── review_cache.py    # 리뷰 캐시
+```
+
+**책임**: 외부 시스템 연동, 모니터링, 데이터 수집
+
+---
+
+### 6. Service Layer
+```
+backend/app/services/
+  ├── review_service.py      # 리뷰 수집/분석 유스케이스
+  ├── chat_service.py        # 채팅 서비스 (legacy)
+  └── prompt_service.py      # LLM 프롬프트 생성
+```
+
+**책임**: 복잡한 유스케이스 조율, 여러 도메인 로직 통합
+
+---
+
+## 최근 리팩토링 (2026-01-18)
+
+### Clean Architecture 재구성
+- `domain/dialogue` → `usecases/dialogue` (유스케이스 로직)
+- `domain/reg` → `adapters/persistence/reg` (데이터 접근)
+- `domain/review` → `domain/rules/review` (도메인 규칙)
+
+### 코드 품질 개선
+- **14개 함수 리팩토링**: 1,044 lines → 442 lines (58% 감소)
+- **36개 헬퍼 함수 추출**: 단일 책임 원칙 준수
+- **64줄 중복 제거**: constants.py 통합
+- **16개 함수의 내부 import 제거**: 의존성 명확화
+
+자세한 내용은 [REFACTORING_2026_01.md](REFACTORING_2026_01.md) 참조
+
+---
+
+## 계층별 구조 (계속)
     subgraph "4️⃣ 대화 엔진 Core"
         D1[Session Manager<br/>세션 관리]
         D2[Dialogue Engine<br/>대화 수렴 로직]

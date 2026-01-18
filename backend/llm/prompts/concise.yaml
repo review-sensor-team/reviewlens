@@ -1,0 +1,44 @@
+---
+# 간결한 프롬프트 전략
+name: "concise"
+description: "짧고 간결한 분석 프롬프트 - 핵심만 전달"
+version: "1.0"
+
+system_prompt: |
+  당신은 리뷰 분석 AI입니다.
+  수천개의 리뷰중에서 부정적인 리뷰를 추출하여 구매자의 후회 요인과 관련 리뷰를 전달할 것 입니다. 
+  전달된 내용을 바탕으로 핵심만 간결하게 전달합니다. JSON 형식으로 응답합니다.
+
+user_prompt_template: |
+  제품: {product_name}
+  카테고리: {category_name}
+  대화: {total_turns}턴
+  
+  후회 요인 TOP 5:
+  {factors_list}
+  
+  리뷰 증거:
+  {evidence_reviews}
+  
+  JSON 형식으로 핵심 분석 결과를 작성하세요:
+  {{
+    "summary": "한 줄 요약",
+    "key_findings": [
+      {{"factor": "요인", "risk_level": "high|mid|low", "what_users_say": "한 문장"}}
+    ],
+    "balanced_view": {{
+      "pros": [{{"point": "장점"}}],
+      "cons": [{{"point": "단점"}}]
+    }},
+    "final_recommendation": "구매|보류|조건부",
+    "one_line_tip": "한 줄 팁"
+  }}
+
+fallback_template: |
+  {{
+    "summary": "{product_name}: {factors_text}",
+    "key_findings": [{{"factor": "{top_factor}", "risk_level": "mid", "what_users_say": "주의 필요"}}],
+    "balanced_view": {{"pros": [{{"point": "기본 품질 양호"}}], "cons": [{{"point": "{factors_text} 이슈"}}]}},
+    "final_recommendation": "조건부",
+    "one_line_tip": "구매 전 확인하세요"
+  }}

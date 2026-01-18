@@ -12,7 +12,7 @@ from backend.app.core.settings import settings
 from ..collector import SmartStoreCollector
 from ..schemas.requests import ChatRequest, SessionStartRequest, CollectReviewsRequest, ResetSessionRequest
 from ..schemas.responses import ChatResponse, SessionStartResponse, CollectReviewsResponse, Review, FactorMatch
-from ..session.session_store import SessionStore
+from .session_store import SessionStore
 from .routes_chat_helpers import (
     get_available_categories, detect_category, get_related_reviews,
     format_bot_message, get_stability_info, format_choices, check_cache,

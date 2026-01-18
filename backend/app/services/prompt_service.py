@@ -1,9 +1,10 @@
 """프롬프트 서비스 - LLM context 및 프롬프트 생성 (Service Layer)"""
+import json
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-logger = logging.getLogger("services.prompt")
+logger = logging.getLogger(__name__)
 
 
 class PromptService:
@@ -89,13 +90,19 @@ class PromptService:
         Returns:
             프롬프트 텍스트
         """
-        import json
+        # Context JSON 생성
+        context_json = json.dumps(llm_context, ensure_ascii=False, indent=2)
         
+        # Safety rules 포맷팅
+        safety_rules = llm_context.get('safety_rules', [])
+        safety_rules_text = '\n'.join(f'- {rule}' for rule in safety_rules)
+        
+        # 프롬프트 조합
         prompt = f"""# Task
 {instruction}
 
 # Context
-{json.dumps(llm_context, ensure_ascii=False, indent=2)}
+{context_json}
 
 # Instructions
 1. 상위 factors를 바탕으로 사용자의 우선순위를 파악하세요
@@ -104,7 +111,7 @@ class PromptService:
 4. 사용자에게 도움이 되는 응답을 생성하세요
 
 # Safety Rules
-{chr(10).join('- ' + rule for rule in llm_context.get('safety_rules', []))}
+{safety_rules_text}
 """
         
         return prompt

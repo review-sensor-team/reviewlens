@@ -6,7 +6,7 @@ import pandas as pd
 
 from .review_loader import ReviewLoader
 
-logger = logging.getLogger("infra.loaders.csv")
+logger = logging.getLogger(__name__)
 
 
 class CSVReviewLoader(ReviewLoader):

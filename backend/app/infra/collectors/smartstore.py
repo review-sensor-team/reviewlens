@@ -6,7 +6,7 @@ import hashlib
 from typing import List, Dict, Optional
 from datetime import datetime
 
-logger = logging.getLogger("collector.smartstore")
+logger = logging.getLogger(__name__)
 
 try:
     from selenium import webdriver

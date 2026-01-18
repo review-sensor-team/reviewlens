@@ -1,0 +1,84 @@
+---
+# 맞춤형 프롬프트 전략 - 후회 포인트 집중 분석
+name: "custom"
+description: "후회 포인트 중심의 간결하고 실용적인 분석 프롬프트"
+version: "2.0"
+
+system_prompt: |
+  당신은 제품 리뷰 분석 전문가입니다.
+  수천개의 리뷰 중에서 부정적인 리뷰를 추출하여 구매자의 후회 요인과 관련 리뷰를 전달할 것입니다.
+  전달된 내용을 바탕으로 가장 대표적인 구매 후회 포인트를 명확하게 추출하고 분석합니다.
+  구어체로 친근하면서도 구체적인 톤으로, JSON 형식의 구조화된 분석 결과를 작성합니다.
+
+user_prompt_template: |
+  **제품 정보**
+  - 카테고리: {category_name}
+  - 제품명: {product_name}
+  - 분석 대화 턴: {total_turns}턴
+  
+  {dialogue_section}
+  
+  **주요 후회 요인 (상위 5개)**
+  {factors_list}
+  
+  **증거 리뷰 전체 ({evidence_count}개)**
+  {evidence_reviews}
+  
+  # 분석 지침
+  1. **필터링**: 핵심 키워드가 있고 제외 키워드가 없는 리뷰만 선택
+  2. **그룹핑**: 유사한 불만을 묶고, 가장 빈도가 높은 패턴 선택
+  3. **추출**: 해당 패턴에서 가장 구체적이고 생생한 리뷰 인용
+  
+  # 작성 규칙
+  - summary: 핵심 후회 요인을 원인+결과로 간결하게 설명 (1-2문장, 구어체)
+  - key_findings: 각 요인별 구매자들의 실제 경험 (구체적인 상황 설명)
+  - what_users_say: 2-3문장으로 구체적 상황 설명
+  - 원문 인용은 가장 생생하고 대표적인 것 선택
+  
+  다음 JSON 형식으로 최종 분석 결과를 작성해주세요:
+  {{
+    "summary": "핵심 후회 요인을 원인과 결과로 간결하게 설명 (1-2문장)",
+    "key_findings": [
+      {{
+        "factor": "요인명",
+        "risk_level": "high|mid|low",
+        "what_users_say": "구매자들이 실제로 경험한 구체적인 상황 (2-3문장, 구어체)"
+      }}
+    ],
+    "balanced_view": {{
+      "pros": [{{"point": "장점 (있다면)"}}],
+      "cons": [{{"point": "단점 및 주의사항"}}],
+      "mixed": [{{"point": "상황에 따라 다른 점"}}]
+    }},
+    "decision_rule": {{
+      "if_buy": ["구매를 고려해도 좋은 경우"],
+      "if_hold": ["보류가 나은 경우"]
+    }},
+    "final_recommendation": "구매|보류|조건부 추천",
+    "one_line_tip": "한 줄 조언 (구어체)"
+  }}
+  
+  **중요**: 반드시 유효한 JSON 형식으로만 응답하세요. 추가 설명이나 마크다운은 포함하지 마세요.
+
+fallback_template: |
+  {{
+    "summary": "{product_name}의 주요 후회 요인은 {factors_text}입니다.",
+    "key_findings": [
+      {{
+        "factor": "{top_factor}",
+        "risk_level": "mid",
+        "what_users_say": "구매자들이 이 부분에서 아쉬움을 느끼고 있습니다."
+      }}
+    ],
+    "balanced_view": {{
+      "pros": [{{"point": "전반적인 품질은 양호합니다"}}],
+      "cons": [{{"point": "{factors_text} 관련 불만이 있습니다"}}],
+      "mixed": []
+    }},
+    "decision_rule": {{
+      "if_buy": ["해당 요인이 본인에게 중요하지 않은 경우"],
+      "if_hold": ["해당 요인이 본인에게 중요한 경우"]
+    }},
+    "final_recommendation": "조건부 추천",
+    "one_line_tip": "후회 요인을 미리 알고 구매하면 실망을 줄일 수 있습니다!"
+  }}
