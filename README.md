@@ -345,6 +345,11 @@ docker-compose -f docker-compose.monitoring.yml up -d
   - 환경 변수로 쉬운 전환 (PROMPT_STRATEGY)
   - 커스텀 템플릿 추가 가능
   - A/B 테스트 지원
+- ✅ **다중 프롬프트 전략**
+  - 쉼표로 구분하여 여러 전략 동시 실행
+  - 예: `PROMPT_STRATEGY=default,friendly`
+  - 각 전략별 LLM 응답 수신
+  - 단일/다중 자동 감지
 
 ---
 
