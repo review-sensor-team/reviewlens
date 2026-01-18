@@ -61,6 +61,90 @@ class ReviewService:
             self._cache = ReviewCache(cache_dir=str(self.data_dir / "review"))
         return self._cache
     
+    def _load_factor_csv(self) -> Optional[pd.DataFrame]:
+        """Factor CSV 로드 및 상품 그룹화"""
+        factor_csv_path = self.data_dir / "factor" / "reg_factor_v4.csv"
+        
+        if not factor_csv_path.exists():
+            return None
+        
+        try:
+            df = pd.read_csv(factor_csv_path)
+            required_cols = ['product_name', 'category', 'category_name']
+            
+            if all(col in df.columns for col in required_cols):
+                return df.groupby(required_cols).agg({
+                    'factor_id': 'count'
+                }).reset_index()
+            
+            return None
+        except Exception as e:
+            logger.error(f"Factor CSV 로드 실패: {e}", exc_info=True)
+            return None
+    
+    def _match_review_file(self, category: str, product_name: str, product_id: str) -> int:
+        """리뷰 파일 매칭 및 카운트 반환"""
+        storage = self._get_storage()
+        if not storage:
+            return 0
+        
+        review_files = storage.list_reviews()
+        for file_info in review_files:
+            pid = file_info.get("product_id", "")
+            file_category = file_info.get("category", "")
+            
+            # category와 product_name으로 매칭
+            category_match = category in file_category or category in pid
+            name_match = product_name.lower() in pid.lower() or product_id.lower() in pid.lower()
+            
+            if category_match and name_match:
+                vendor = file_info.get("vendor", "")
+                review_df = storage.load_reviews(vendor, pid, latest=True)
+                if review_df is not None:
+                    return len(review_df)
+        
+        return 0
+    
+    def _create_product_info(self, row: pd.Series, review_count: int) -> Dict[str, Any]:
+        """상품 정보 딕셔너리 생성"""
+        product_name = row['product_name']
+        category = row['category']
+        category_name = row['category_name']
+        factor_count = row['factor_id']
+        
+        product_id = product_name.replace(' ', '_').replace('/', '_')
+        
+        # 리뷰 파일이 없으면 factor 개수로 추정
+        if review_count == 0:
+            review_count = factor_count * 10
+        
+        return {
+            "product_id": product_id,
+            "product_name": product_name,
+            "category": category_name,
+            "category_key": category,
+            "review_count": review_count,
+            "vendor": "smartstore"
+        }
+    
+    def _add_fallback_product(self) -> List[Dict[str, Any]]:
+        """샘플 상품 추가 (폴백)"""
+        logger.warning("Factor CSV에 상품 없음. 샘플 상품 추가")
+        sample_review_file = self.data_dir / "review" / "review_sample.csv"
+        
+        if sample_review_file.exists():
+            df = pd.read_csv(sample_review_file)
+            return [{
+                "product_id": "sample_001",
+                "product_name": "샘플 상품 (갤럭시 버즈)",
+                "category": "전자기기",
+                "category_key": "electronics",
+                "review_count": len(df),
+                "vendor": "sample"
+            }]
+        
+        return []
+    
     def get_available_products(self) -> List[Dict[str, Any]]:
         """사용 가능한 상품 목록 조회
         
@@ -70,78 +154,22 @@ class ReviewService:
             상품 목록 [{ product_id, product_name, category, review_count }]
         """
         products = []
-        factor_csv_path = self.data_dir / "factor" / "reg_factor_v4.csv"
+        product_groups = self._load_factor_csv()
         
-        try:
-            if factor_csv_path.exists():
-                # Factor CSV 파일 로드
-                df = pd.read_csv(factor_csv_path)
+        if product_groups is not None:
+            for idx, row in product_groups.iterrows():
+                product_name = row['product_name']
+                category = row['category']
+                product_id = product_name.replace(' ', '_').replace('/', '_')
                 
-                # product_name, category, category_name으로 그룹화하여 고유 상품 목록 추출
-                if 'product_name' in df.columns and 'category_name' in df.columns and 'category' in df.columns:
-                    product_groups = df.groupby(['product_name', 'category', 'category_name']).agg({
-                        'factor_id': 'count'  # factor 개수
-                    }).reset_index()
-                    
-                    for idx, row in product_groups.iterrows():
-                        product_name = row['product_name']
-                        category = row['category']  # 영문 category (파일명에 사용)
-                        category_name = row['category_name']  # 한글 category (표시용)
-                        factor_count = row['factor_id']
-                        
-                        # product_id 생성 (상품명에서 공백 제거)
-                        product_id = product_name.replace(' ', '_').replace('/', '_')
-                        
-                        # Storage에서 실제 리뷰 파일이 있는지 확인 (category 기반 매칭)
-                        storage = self._get_storage()
-                        review_count = 0
-                        if storage:
-                            review_files = storage.list_reviews()
-                            for file_info in review_files:
-                                vendor = file_info.get("vendor", "")
-                                pid = file_info.get("product_id", "")
-                                file_category = file_info.get("category", "")
-                                
-                                # category와 product_name으로 매칭
-                                if category in file_category or category in pid:
-                                    if product_name.lower() in pid.lower() or product_id.lower() in pid.lower():
-                                        # 리뷰 파일이 있으면 카운트
-                                        review_df = storage.load_reviews(vendor, pid, latest=True)
-                                        if review_df is not None:
-                                            review_count = len(review_df)
-                                            break
-                        
-                        # 리뷰 파일이 없으면 factor 개수를 표시
-                        if review_count == 0:
-                            review_count = factor_count * 10  # factor당 평균 10개 리뷰로 추정
-                        
-                        products.append({
-                            "product_id": product_id,
-                            "product_name": product_name,
-                            "category": category_name,  # 한글 카테고리 표시
-                            "category_key": category,  # 영문 카테고리 (내부 사용)
-                            "review_count": review_count,
-                            "vendor": "smartstore"
-                        })
-                    
-                    logger.info(f"Factor CSV에서 {len(products)}개 상품 로드")
-        except Exception as e:
-            logger.error(f"Factor CSV 로드 실패: {e}", exc_info=True)
+                review_count = self._match_review_file(category, product_name, product_id)
+                products.append(self._create_product_info(row, review_count))
+            
+            logger.info(f"Factor CSV에서 {len(products)}개 상품 로드")
         
         # 비어있으면 샘플 상품 추가
         if not products:
-            logger.warning("Factor CSV에 상품 없음. 샘플 상품 추가")
-            sample_review_file = self.data_dir / "review" / "review_sample.csv"
-            if sample_review_file.exists():
-                df = pd.read_csv(sample_review_file)
-                products.append({
-                    "product_id": "sample_001",
-                    "product_name": "샘플 상품 (갤럭시 버즈)",
-                    "category": "전자기기",
-                    "category_key": "electronics",
-                    "review_count": len(df),
-                    "vendor": "sample"
-                })
+            products = self._add_fallback_product()
         
         logger.info(f"사용 가능한 상품: {len(products)}개")
         return products
