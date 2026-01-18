@@ -172,7 +172,13 @@ backend/
 │   ├── llm_factory.py
 │   ├── llm_openai.py        # GPT-4o-mini
 │   ├── llm_claude.py
-│   └── llm_gemini.py
+│   ├── llm_gemini.py
+│   ├── prompt_factory.py    # 🆕 프롬프트 팩토리 패턴
+│   └── prompts/             # 🆕 YAML 템플릿 (default, concise, detailed, friendly)
+│       ├── default.yaml
+│       ├── concise.yaml
+│       ├── detailed.yaml
+│       └── friendly.yaml
 ├── data/
 │   ├── factor/
 │   │   └── reg_factor_v4.csv    # 10개 상품, 100개 factors
@@ -239,11 +245,10 @@ frontend/
 
 ### 🚧 진행 중
 - UI/UX 디자인 적용
-- LLM API 통합
+- 프롬프트 A/B 테스트
 
 ### 📋 계획 중
 - 팩터와 질문 데이터 자동 생성(백그라운드 잡)
-- LLM 프롬프트 최적화
 - 벡터 기반 후회 리뷰 추출
 - 멀티 카테고리 확장
 
@@ -335,6 +340,49 @@ docker-compose -f docker-compose.monitoring.yml up -d
   - 파이프라인 단계별 latency 측정
 - ✅ **CORS 다중 포트 지원** (5173, 5174, 3000)
 
+- ✅ **LLM 프롬프트 팩토리 패턴**
+  - YAML 기반 프롬프트 템플릿 (4가지 전략)
+  - 환경 변수로 쉬운 전환 (PROMPT_STRATEGY)
+  - 커스텀 템플릿 추가 가능
+  - A/B 테스트 지원
+
+---
+
+## LLM 프롬프트 실험하기 🆕
+
+프롬프트를 코드 변경 없이 자유롭게 실험할 수 있습니다!
+
+### 전략 선택
+
+`.env` 파일:
+```bash
+# 전문적인 톤 (기본)
+PROMPT_STRATEGY=default
+
+# 짧고 간결
+PROMPT_STRATEGY=concise
+
+# 상세한 분석
+PROMPT_STRATEGY=detailed
+
+# 친근한 MZ 스타일
+PROMPT_STRATEGY=friendly
+```
+
+### 커스텀 프롬프트 만들기
+
+`backend/llm/prompts/my_style.yaml` 생성:
+```yaml
+name: "my_style"
+description: "나만의 프롬프트 스타일"
+system_prompt: |
+  여기에 원하는 시스템 프롬프트 작성
+user_prompt_template: |
+  제품: {product_name}
+  ...
+```
+
+📚 **상세 가이드**: [PROMPT_FACTORY_GUIDE.md](docs/PROMPT_FACTORY_GUIDE.md)
 ---
 
 ## 향후 확장
