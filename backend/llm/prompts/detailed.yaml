@@ -1,0 +1,120 @@
+---
+# 상세한 프롬프트 전략
+name: "detailed"
+description: "매우 상세한 분석 프롬프트 - 깊이 있는 인사이트 제공"
+version: "1.0"
+
+system_prompt: |
+  당신은 20년 경력의 제품 리뷰 분석 전문가입니다.
+  데이터 기반으로 깊이 있는 인사이트를 제공하며, 구매자의 실제 경험을 정확히 파악합니다.
+  전문적이고 체계적인 분석을 통해 신뢰할 수 있는 구매 가이드를 제공합니다.
+  모든 분석은 증거 기반이어야 하며, JSON 형식으로 구조화된 결과를 작성합니다.
+
+user_prompt_template: |
+  # 제품 분석 요청서
+  
+  ## 1. 제품 기본 정보
+  - 카테고리: {category_name}
+  - 제품명: {product_name}
+  - 대화 분석 턴: {total_turns}턴
+  
+  {dialogue_section}
+  
+  ## 2. 데이터 기반 후회 요인 분석 (상위 5개)
+  다음은 알고리즘 분석을 통해 도출된 주요 후회 요인입니다:
+  {factors_list}
+  
+  ## 3. 실제 구매자 리뷰 증거 ({evidence_count}개)
+  각 후회 요인에 대한 실제 구매자들의 피드백입니다:
+  {evidence_reviews}
+  
+  ## 4. 분석 결과 작성 요구사항
+  
+  위 데이터를 바탕으로 다음 JSON 형식의 상세 분석 보고서를 작성해주세요:
+  
+  {{
+    "summary": "전체 분석 요약 (3-4문장, 구체적인 수치나 패턴 언급)",
+    "key_findings": [
+      {{
+        "factor": "후회 요인명 (한글 표시명)",
+        "risk_level": "high|mid|low",
+        "what_users_say": "구매자 목소리 분석 (3-4문장, 구체적인 표현 인용)"
+      }}
+    ],
+    "balanced_view": {{
+      "pros": [
+        {{
+          "point": "장점 항목",
+          "evidence": "근거 (리뷰에서 발견된 구체적 내용)"
+        }}
+      ],
+      "cons": [
+        {{
+          "point": "단점 항목",
+          "evidence": "근거 (리뷰에서 발견된 구체적 내용)"
+        }}
+      ],
+      "mixed": [
+        {{
+          "point": "상황별 평가",
+          "context": "어떤 상황에서 장/단점인지"
+        }}
+      ]
+    }},
+    "decision_rule": {{
+      "if_buy": [
+        "구매 추천 조건 1 (구체적으로)",
+        "구매 추천 조건 2 (구체적으로)"
+      ],
+      "if_hold": [
+        "보류 권장 조건 1 (구체적으로)",
+        "보류 권장 조건 2 (구체적으로)"
+      ]
+    }},
+    "user_segments": {{
+      "best_fit": "이 제품에 가장 적합한 사용자 프로필",
+      "poor_fit": "이 제품을 피해야 할 사용자 프로필"
+    }},
+    "final_recommendation": "구매|보류|조건부 추천",
+    "confidence_level": "분석 신뢰도 (high|medium|low)",
+    "one_line_tip": "핵심 구매 조언 (한 문장)"
+  }}
+  
+  **분석 가이드라인:**
+  - 모든 주장은 제공된 리뷰 증거에 기반할 것
+  - 구체적인 사례나 패턴을 언급할 것
+  - 균형잡힌 시각을 유지할 것 (과장 금지)
+  - 실용적이고 행동 가능한 조언을 제공할 것
+  - 반드시 유효한 JSON 형식으로만 응답할 것
+
+fallback_template: |
+  {{
+    "summary": "{product_name}에 대한 {total_turns}턴의 대화 분석 결과, 주요 후회 요인은 {factors_text}로 나타났습니다.",
+    "key_findings": [
+      {{
+        "factor": "{top_factor}",
+        "risk_level": "mid",
+        "what_users_say": "구매자들은 이 부분에서 기대와 실제 사용 경험 간 차이를 경험하고 있습니다."
+      }}
+    ],
+    "balanced_view": {{
+      "pros": [
+        {{"point": "기본적인 품질과 성능", "evidence": "전반적인 만족도는 양호한 편입니다"}}
+      ],
+      "cons": [
+        {{"point": "{factors_text} 관련 이슈", "evidence": "일부 사용자들이 불편함을 호소하고 있습니다"}}
+      ],
+      "mixed": []
+    }},
+    "decision_rule": {{
+      "if_buy": ["해당 후회 요인이 본인의 사용 패턴에 큰 영향을 주지 않는 경우"],
+      "if_hold": ["해당 후회 요인이 본인의 주요 구매 결정 기준인 경우"]
+    }},
+    "user_segments": {{
+      "best_fit": "후회 요인을 감수할 수 있는 사용자",
+      "poor_fit": "해당 요인에 민감한 사용자"
+    }},
+    "final_recommendation": "조건부 추천",
+    "confidence_level": "medium",
+    "one_line_tip": "구매 전 자신의 우선순위와 후회 요인을 비교해보세요!"
+  }}

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     OPENAI_MODEL: Optional[str] = None
     GEMINI_MODEL: Optional[str] = None
     CLAUDE_MODEL: Optional[str] = None
+    
+    # Prompt 전략 설정 (.env에서 읽어옴)
+    PROMPT_STRATEGY: str = "default"  # default|concise|detailed|friendly
 
     #LLM Common parameters
     LLM_TEMPERATURE: float = 0.6

@@ -5,18 +5,49 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
+from .prompt_factory import PromptFactory, PromptStrategy
+
 logger = logging.getLogger(__name__)
 
 
 class PromptBuilder:
-    """프롬프트 구성 유틸리티 - 모든 LLM 클라이언트에서 공통 사용"""
+    """프롬프트 구성 유틸리티 - PromptFactory를 사용한 전략 기반 프롬프트 생성
+    
+    레거시 호환성을 위해 유지하되, 내부적으로 PromptFactory 사용
+    """
+    
+    # 기본 프롬프트 전략 (환경 변수나 설정으로 변경 가능)
+    _default_strategy: Optional[PromptStrategy] = None
+    
+    @classmethod
+    def _get_strategy(cls) -> PromptStrategy:
+        """프롬프트 전략 가져오기 (싱글톤 패턴)"""
+        if cls._default_strategy is None:
+            # Settings에서 전략 이름 가져오기
+            from ..app.core.settings import Settings
+            settings = Settings()
+            strategy_name = settings.PROMPT_STRATEGY
+            
+            logger.info(f"[PromptBuilder] 프롬프트 전략 초기화: {strategy_name}")
+            cls._default_strategy = PromptFactory.create(strategy=strategy_name)
+        
+        return cls._default_strategy
+    
+    @classmethod
+    def set_strategy(cls, strategy: str):
+        """프롬프트 전략 변경
+        
+        Args:
+            strategy: 전략 이름 (default|concise|detailed|friendly)
+        """
+        logger.info(f"[PromptBuilder] 프롬프트 전략 변경: {strategy}")
+        cls._default_strategy = PromptFactory.create(strategy=strategy)
     
     @staticmethod
     def build_system_prompt() -> str:
         """시스템 프롬프트 생성"""
-        return """당신은 제품 리뷰 분석 전문가입니다. 
-구매자들의 후회 요인을 분석하여 실용적이고 구체적인 조언을 제공합니다.
-친근하지만 전문적인 톤으로, JSON 형식의 구조화된 분석 결과를 작성합니다."""
+        strategy = PromptBuilder._get_strategy()
+        return strategy.build_system_prompt()
     
     @staticmethod
     def build_user_prompt(
@@ -28,83 +59,11 @@ class PromptBuilder:
         dialogue_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
         """유저 프롬프트 생성"""
-        # 상위 요인 정리
-        factors_text = "\n".join([
-            f"{i+1}. {factor_key} (점수: {score:.2f})"
-            for i, (factor_key, score) in enumerate(top_factors[:5])
-        ])
-        
-        # 대화 내용 정리
-        dialogue_text = ""
-        if dialogue_history:
-            dialogue_lines = []
-            for turn in dialogue_history:
-                role = turn.get('role', '')
-                text = turn.get('message', '')
-                if role == 'user':
-                    dialogue_lines.append(f"사용자: {text}")
-                elif role == 'assistant':
-                    dialogue_lines.append(f"어시스턴트: {text}")
-            dialogue_text = "\n".join(dialogue_lines)
-        
-        # 증거 리뷰 정리
-        evidence_text = ""
-        for i, rev in enumerate(evidence_reviews, 1):
-            label = rev.get('label', 'NEU')
-            rating = rev.get('rating', 0)
-            excerpt = rev.get('excerpt', '')
-            evidence_text += f"{i}. [{label}] {rating}점 - {excerpt}\n"
-        
-        # User Prompt 구성
-        user_prompt_parts = [
-            "**제품 정보**",
-            f"- 카테고리: {category_name}",
-            f"- 제품명: {product_name}",
-            f"- 분석 대화 턴: {total_turns}턴",
-            ""
-        ]
-        
-        if dialogue_text:
-            user_prompt_parts.extend([
-                "**대화 내용**",
-                dialogue_text,
-                ""
-            ])
-        
-        user_prompt_parts.extend([
-            "**주요 후회 요인 (상위 5개)**",
-            factors_text,
-            "",
-            f"**증거 리뷰 전체 ({len(evidence_reviews)}개)**",
-            evidence_text,
-            "",
-            "다음 JSON 형식으로 최종 분석 결과를 작성해주세요:",
-            "{",
-            '  "summary": "핵심 후회 요인 설명 (2-3문장)",',
-            '  "key_findings": [',
-            '    {',
-            '      "factor": "요인명",',
-            '      "risk_level": "high|mid|low",',
-            '      "what_users_say": "구매자들이 말하는 내용 (2-3문장)"',
-            '    }',
-            '  ],',
-            '  "balanced_view": {',
-            '    "pros": [{"point": "장점"}],',
-            '    "cons": [{"point": "단점"}],',
-            '    "mixed": [{"point": "상황에 따라 다름"}]',
-            '  },',
-            '  "decision_rule": {',
-            '    "if_buy": ["구매를 고려해도 좋은 경우"],',
-            '    "if_hold": ["보류가 나은 경우"]',
-            '  },',
-            '  "final_recommendation": "구매|보류|조건부 추천",',
-            '  "one_line_tip": "한 줄 조언"',
-            "}",
-            "",
-            "**중요**: 반드시 유효한 JSON 형식으로만 응답하세요. 추가 설명이나 마크다운은 포함하지 마세요."
-        ])
-        
-        return "\n".join(user_prompt_parts)
+        strategy = PromptBuilder._get_strategy()
+        return strategy.build_user_prompt(
+            top_factors, evidence_reviews, total_turns,
+            category_name, product_name, dialogue_history
+        )
     
     @staticmethod
     def get_fallback_summary(
@@ -113,29 +72,8 @@ class PromptBuilder:
         product_name: str
     ) -> str:
         """API 실패 시 기본 요약"""
-        factors_text = ", ".join([f"{key}" for key, _ in top_factors[:3]])
-        
-        return f"""{{
-  "summary": "{product_name}의 주요 후회 요인은 {factors_text}입니다.",
-  "key_findings": [
-    {{
-      "factor": "{top_factors[0][0] if top_factors else '알 수 없음'}",
-      "risk_level": "mid",
-      "what_users_say": "구매자들이 이 부분에서 아쉬움을 느끼고 있습니다."
-    }}
-  ],
-  "balanced_view": {{
-    "pros": [{{"point": "전반적인 품질은 양호합니다"}}],
-    "cons": [{{"point": "{factors_text} 관련 불만이 있습니다"}}],
-    "mixed": []
-  }},
-  "decision_rule": {{
-    "if_buy": ["해당 요인이 본인에게 중요하지 않은 경우"],
-    "if_hold": ["해당 요인이 본인에게 중요한 경우"]
-  }},
-  "final_recommendation": "조건부 추천",
-  "one_line_tip": "후회 요인을 미리 알고 구매하면 실망을 줄일 수 있습니다!"
-}}"""
+        strategy = PromptBuilder._get_strategy()
+        return strategy.build_fallback(top_factors, category_name, product_name)
 
 
 class BaseLLMClient(ABC):
