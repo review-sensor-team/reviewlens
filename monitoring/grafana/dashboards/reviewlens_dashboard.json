@@ -84,8 +84,8 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(http_requests_total[1m])",
-          "legendFormat": "{{method}} {{endpoint}}",
+          "expr": "sum(rate(http_requests_total[1m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}",
           "refId": "A"
         }
       ],
@@ -348,12 +348,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(dialogue_sessions_total[1m])",
+          "expr": "sum(dialogue_sessions_total) by (category)",
           "legendFormat": "{{category}}",
           "refId": "A"
         }
       ],
-      "title": "대화 세션 시작 속도",
+      "title": "대화 세션 시작 수 (누적)",
       "type": "timeseries"
     },
     {
@@ -498,7 +498,7 @@
           "refId": "B"
         }
       ],
-      "title": "Retrieval Stage Latency (p50/p95)",
+      "title": "Retrieval Stage Latency (p50/p95) (증거 검색 지연시간)",
       "type": "timeseries"
     },
     {
@@ -573,7 +573,7 @@
           "refId": "B"
         }
       ],
-      "title": "Scoring Stage Latency (p50/p95)",
+      "title": "Scoring Stage Latency (p50/p95) (점수 계산 지연시간)",
       "type": "timeseries"
     },
     {
@@ -648,7 +648,7 @@
           "refId": "B"
         }
       ],
-      "title": "Evidence Count (p50/p95)",
+      "title": "Evidence Count (p50/p95) (증거 리뷰 개수)",
       "type": "timeseries"
     },
     {
@@ -731,7 +731,7 @@
           "refId": "B"
         }
       ],
-      "title": "LLM API Latency (p50/p95)",
+      "title": "LLM API Latency (p50/p95) (LLM API 응답시간)",
       "type": "timeseries"
     },
     {
@@ -881,7 +881,7 @@
           "refId": "A"
         }
       ],
-      "title": "에러 발생 속도",
+      "title": "에러 발생 속도 (No data = 정상)",
       "type": "timeseries"
     }
   ],

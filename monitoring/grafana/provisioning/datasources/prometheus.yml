@@ -9,6 +9,6 @@ datasources:
     isDefault: true
     editable: true
     jsonData:
-      timeInterval: 15s
+      timeInterval: "15s"
 
 

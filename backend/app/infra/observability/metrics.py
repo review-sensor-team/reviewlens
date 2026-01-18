@@ -200,16 +200,28 @@ def track_time(histogram: Histogram, labels: dict = None):
 
 def track_errors(error_type: str, component: str):
     """
-    에러를 추적하는 데코레이터
+    에러를 추적하는 데코레이터 (async 함수 지원)
     
     Usage:
-        @track_errors('retrieval_error', 'retrieval')
-        def risky_function():
+        @track_errors('api_error', 'endpoint_name')
+        async def async_function():
             ...
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
+        async def async_wrapper(*args, **kwargs) -> Any:
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                # 모든 Exception (HTTPException 포함) 기록
+                errors_total.labels(
+                    error_type=error_type,
+                    component=component
+                ).inc()
+                raise
+        
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs) -> Any:
             try:
                 return func(*args, **kwargs)
             except Exception as e:
@@ -218,7 +230,13 @@ def track_errors(error_type: str, component: str):
                     component=component
                 ).inc()
                 raise
-        return wrapper
+        
+        # async 함수면 async_wrapper, 아니면 sync_wrapper 반환
+        import asyncio
+        if asyncio.iscoroutinefunction(func):
+            return async_wrapper
+        else:
+            return sync_wrapper
     return decorator
 
 
