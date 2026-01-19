@@ -12,7 +12,12 @@ from pydantic import BaseModel
 
 from ...services.review_service import ReviewService
 from ...core.settings import settings
-from ...infra.observability.metrics import dialogue_turns_total, track_errors
+from ...infra.observability.metrics import (
+    dialogue_turns_total, 
+    track_errors, 
+    user_journey_stage_total,
+    dialogue_completions_total
+)
 from ...adapters.persistence.reg.store import load_csvs, parse_factors
 from ...usecases.dialogue.session import DialogueSession
 
@@ -514,6 +519,14 @@ def _load_review_data(category: str, service: ReviewService):
     Raises:
         HTTPException: 리뷰 파일 없음
     """
+
+    # 📊 사용자 여정: 리뷰 수집 단계 진입
+    user_journey_stage_total.labels(
+        stage="review_collection",
+        action="enter",
+        category=category
+    ).inc()
+
     loader = service._get_review_loader()
     review_df = None
     vendor = "smartstore"
@@ -717,6 +730,13 @@ async def analyze_reviews(
 async def get_available_products(
     service: ReviewService = Depends(get_review_service)
 ):
+    # 📊 사용자 여정: 상품 선택 단계 진입
+    user_journey_stage_total.labels(
+        stage="product_selection",
+        action="enter",
+        category="unknown"
+    ).inc()
+
     """사용 가능한 상품 목록 조회
     
     USE_PRODUCT_SELECTION=True일 때 사용
@@ -807,6 +827,18 @@ async def analyze_product(
             category=category,
             product_id=product_name
         )
+        
+        # 📊 사용자 여정: 리뷰 수집 완료 & 대화 시작 진입
+        user_journey_stage_total.labels(
+            stage="review_collection",
+            action="complete",
+            category=category
+        ).inc()
+        user_journey_stage_total.labels(
+            stage="dialogue_start",
+            action="enter",
+            category=category
+        ).inc()
         
         # 5. 세션 데이터 생성 및 캐싱 (helper 함수)
         session_id = f"session-{category}-{hash(product_name) % 100000}"
@@ -979,6 +1011,13 @@ async def answer_question(
         category = session_data.get("category", "unknown")
         dialogue_turns_total.labels(category=category).inc()
         
+        # 📊 사용자 여정: 대화 진행 중
+        user_journey_stage_total.labels(
+            stage="dialogue_active",
+            action="enter",
+            category=category
+        ).inc()
+        
         # 3. 수렴 조건 체크
         is_converged = _check_convergence(session_data, min_turns=3)
         
@@ -1046,6 +1085,16 @@ async def answer_question(
             llm_context = dialogue_session._generate_analysis(top_factors)
             
             logger.info(f"LLM 분석 완료 - llm_summary 길이: {len(llm_context.get('llm_summary', ''))}")
+            
+            # 📊 사용자 여정: 대화 완료
+            user_journey_stage_total.labels(
+                stage="dialogue_complete",
+                action="complete",
+                category=category
+            ).inc()
+            
+            # 📊 대화 세션 완료 메트릭
+            dialogue_completions_total.labels(category=category).inc()
             
             return {
                 "next_question": None,

@@ -91,7 +91,7 @@
       ],
       "title": "RPS",
       "type": "gauge",
-      "description": "초당 요청 수"
+      "description": "1m당 요청 수"
     },
     {
       "datasource": {
@@ -700,8 +700,8 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
+        "h": 8,
+        "w": 24,
         "x": 0,
         "y": 13
       },
@@ -712,7 +712,7 @@
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "width": 200
+          "width": 250
         },
         "tooltip": {
           "mode": "multi",
@@ -725,12 +725,12 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "sum(rate(http_requests_total[1m])) by (endpoint)",
-          "legendFormat": "{{endpoint}}",
+          "expr": "sum(rate(http_requests_total[1m])) by (method, status_code)",
+          "legendFormat": "{{method}} ({{status_code}})",
           "refId": "A"
         }
       ],
-      "title": "엔드포인트별 요청 수",
+      "title": "HTTP 메서드별 요청 수",
       "type": "bargauge"
     },
     {
@@ -787,10 +787,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 13
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 21
       },
       "id": 10,
       "options": {
@@ -799,7 +799,7 @@
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "width": 200
+          "width": 250
         },
         "tooltip": {
           "mode": "multi",
@@ -812,12 +812,12 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "sum(increase(dialogue_sessions_total[10m])) by (category)",
+          "expr": "sum(dialogue_sessions_total) by (category)",
           "legendFormat": "{{category}}",
           "refId": "A"
         }
       ],
-      "title": "카테고리별 세션 시작",
+      "title": "카테고리별 세션 시작 (누적)",
       "type": "bargauge"
     },
     {
@@ -1047,54 +1047,30 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "((sum(increase(user_journey_stage_total{stage=\"url_input\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"url_input\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"url_input\",status=\"start\"}[1h]))) * 100",
-          "legendFormat": "1. 상품 URL 입력 후 이탈률",
+          "expr": "((sum(user_journey_stage_total{stage=\"product_selection\",action=\"enter\"}) - sum(user_journey_stage_total{stage=\"product_selection\",action=\"complete\"})) / clamp_min(sum(user_journey_stage_total{stage=\"product_selection\",action=\"enter\"}), 1)) * 100",
+          "legendFormat": "1. 제품 선택 후 이탈률",
           "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "((sum(increase(user_journey_stage_total{stage=\"review_collection\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"review_collection\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"review_collection\",status=\"start\"}[1h]))) * 100",
-          "legendFormat": "2. 부정 리뷰 수집 후 이탈률",
+          "expr": "((sum(user_journey_stage_total{stage=\"review_collection\",action=\"enter\"}) - sum(user_journey_stage_total{stage=\"review_collection\",action=\"complete\"})) / clamp_min(sum(user_journey_stage_total{stage=\"review_collection\",action=\"enter\"}), 1)) * 100",
+          "legendFormat": "2. 리뷰 수집 후 이탈률",
           "refId": "B"
         },
         {
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "((sum(increase(user_journey_stage_total{stage=\"ai_analysis\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"ai_analysis\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"ai_analysis\",status=\"start\"}[1h]))) * 100",
-          "legendFormat": "3. AI 분석 후 이탈률",
+          "expr": "((sum(user_journey_stage_total{stage=\"dialogue_start\",action=\"enter\"}) - sum(user_journey_stage_total{stage=\"dialogue_complete\",action=\"complete\"})) / clamp_min(sum(user_journey_stage_total{stage=\"dialogue_start\",action=\"enter\"}), 1)) * 100",
+          "legendFormat": "3. 대화 중 이탈률",
           "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus"
-          },
-          "expr": "((sum(increase(user_journey_stage_total{stage=\"regret_summary\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"regret_summary\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"regret_summary\",status=\"start\"}[1h]))) * 100",
-          "legendFormat": "4. 후회 포인트 AI 요약 후 이탈률",
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus"
-          },
-          "expr": "((sum(increase(user_journey_stage_total{stage=\"user_question\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"user_question\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"user_question\",status=\"start\"}[1h]))) * 100",
-          "legendFormat": "5. 사용자 질문 후 이탈률",
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus"
-          },
-          "expr": "((sum(increase(user_journey_stage_total{stage=\"ai_answer\",status=\"start\"}[1h])) - sum(increase(user_journey_stage_total{stage=\"ai_answer\",status=\"complete\"}[1h]))) / sum(increase(user_journey_stage_total{stage=\"ai_answer\",status=\"start\"}[1h]))) * 100",
-          "legendFormat": "6. 리뷰 기반 AI 답변 후 이탈률",
-          "refId": "F"
         }
       ],
-      "title": "사용자 여정 단계별 이탈률",
+      "title": "사용자 여정 단계별 이탈률 (누적)",
       "type": "bargauge",
-      "description": "⚠️ 정확한 추적을 위해서는 코드 수정 필요 (monitoring/USER_JOURNEY_TRACKING_GUIDE.md 참고)"
+      "description": "전체 기간 누적 데이터 기반 이탈률"
     },
     {
       "datasource": {
@@ -1178,15 +1154,15 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "sum(increase(user_journey_stage_total{status=\"start\"}[1h])) by (stage)",
-          "legendFormat": "{{stage}} 시작",
+          "expr": "sum(increase(user_journey_stage_total{action=\"enter\"}[1h])) by (stage)",
+          "legendFormat": "{{stage}} 진입",
           "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "sum(increase(user_journey_stage_total{status=\"complete\"}[1h])) by (stage)",
+          "expr": "sum(increase(user_journey_stage_total{action=\"complete\"}[1h])) by (stage)",
           "legendFormat": "{{stage}} 완료",
           "refId": "B"
         }
@@ -1194,6 +1170,146 @@
       "title": "사용자 여정 단계별 진행 추세",
       "type": "timeseries",
       "description": "각 단계의 시작 수와 완료 수를 시간별로 표시"
+    },
+    {
+      "datasource": {
+        "type": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull", "mean"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus"},
+          "expr": "sum(llm_tokens_total{type=\"prompt\"}) or vector(0)",
+          "legendFormat": "Prompt Tokens (누적)",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus"},
+          "expr": "sum(llm_tokens_total{type=\"completion\"}) or vector(0)",
+          "legendFormat": "Completion Tokens (누적)",
+          "refId": "B"
+        }
+      ],
+      "title": "LLM 토큰 사용량 (누적)",
+      "description": "LLM API 토큰 누적 사용량 (prompt + completion)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "red", "value": 2}
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 44
+      },
+      "id": 15,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus"},
+          "expr": "(increase(llm_tokens_total{provider=\"openai\",type=\"prompt\"}[5m]) * 0.005 / 1000 * 288) + (increase(llm_tokens_total{provider=\"openai\",type=\"completion\"}[5m]) * 0.015 / 1000 * 288)",
+          "legendFormat": "OpenAI Cost (estimated daily)",
+          "refId": "A"
+        }
+      ],
+      "title": "예상 일일 LLM 비용 (5분 기준 추정)",
+      "description": "최근 5분 사용량 기준 일일 비용 추정 (OpenAI gpt-4o-mini: $0.005/1K prompt, $0.015/1K completion)",
+      "type": "gauge"
     }
   ],
   "refresh": "10s",
