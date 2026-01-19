@@ -488,12 +488,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(retrieval_duration_seconds_bucket[5m])) by (le, category))",
+          "expr": "histogram_quantile(0.50, sum(rate(retrieval_duration_seconds_bucket[1m])) by (le, category)) or vector(0)",
           "legendFormat": "p50 - {{category}}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(retrieval_duration_seconds_bucket[5m])) by (le, category))",
+          "expr": "histogram_quantile(0.95, sum(rate(retrieval_duration_seconds_bucket[1m])) by (le, category)) or vector(0)",
           "legendFormat": "p95 - {{category}}",
           "refId": "B"
         }
@@ -563,12 +563,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(scoring_duration_seconds_bucket[5m])) by (le, category))",
+          "expr": "histogram_quantile(0.50, sum(rate(scoring_duration_seconds_bucket[1m])) by (le, category)) or vector(0)",
           "legendFormat": "p50 - {{category}}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(scoring_duration_seconds_bucket[5m])) by (le, category))",
+          "expr": "histogram_quantile(0.95, sum(rate(scoring_duration_seconds_bucket[1m])) by (le, category)) or vector(0)",
           "legendFormat": "p95 - {{category}}",
           "refId": "B"
         }
@@ -638,12 +638,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(evidence_count_bucket[5m])) by (le, category))",
+          "expr": "histogram_quantile(0.50, sum(rate(evidence_count_bucket[1m])) by (le, category)) or vector(0)",
           "legendFormat": "p50 - {{category}}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(evidence_count_bucket[5m])) by (le, category))",
+          "expr": "histogram_quantile(0.95, sum(rate(evidence_count_bucket[1m])) by (le, category)) or vector(0)",
           "legendFormat": "p95 - {{category}}",
           "refId": "B"
         }
@@ -883,6 +883,229 @@
       ],
       "title": "에러 발생 속도 (No data = 정상)",
       "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "사용자 여정의 각 단계별 진입(enter) 및 완료(complete) 누적 횟수를 추적합니다.\n\n**단계 설명:**\n- product_selection (상품 선택): 사용자가 상품을 선택한 단계\n- review_collection (리뷰 수집): 리뷰 데이터를 수집하고 분석하는 단계\n- dialogue_start (대화 시작): 대화형 분석이 시작된 단계\n- dialogue_active (대화 진행): 사용자가 질문에 답변하며 대화가 진행 중인 단계\n- dialogue_complete (대화 완료): 대화가 완료되고 최종 분석 결과가 생성된 단계",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "횟수",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*enter.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*complete.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "table",
+          "placement": "right",
+          "width": 300
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "expr": "sum(user_journey_stage_total{stage=\"product_selection\", action=\"enter\"}) or vector(0)",
+          "legendFormat": "1️⃣ 상품 선택 (진입)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(user_journey_stage_total{stage=\"review_collection\", action=\"enter\"}) or vector(0)",
+          "legendFormat": "2️⃣ 리뷰 수집 (진입)",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(user_journey_stage_total{stage=\"review_collection\", action=\"complete\"}) or vector(0)",
+          "legendFormat": "2️⃣ 리뷰 수집 (완료)",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(user_journey_stage_total{stage=\"dialogue_start\", action=\"enter\"}) or vector(0)",
+          "legendFormat": "3️⃣ 대화 시작 (진입)",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(user_journey_stage_total{stage=\"dialogue_active\", action=\"enter\"}) or vector(0)",
+          "legendFormat": "4️⃣ 대화 진행 (진입)",
+          "refId": "E"
+        },
+        {
+          "expr": "sum(user_journey_stage_total{stage=\"dialogue_complete\", action=\"complete\"}) or vector(0)",
+          "legendFormat": "5️⃣ 대화 완료 (완료)",
+          "refId": "F"
+        }
+      ],
+      "title": "사용자 여정 단계별 진행 추세 (누적)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "각 단계에서 완료하지 않고 이탈한 사용자 비율입니다.\n\n**계산 방식:**\n- 이탈률 = (단계 진입 - 단계 완료) / 단계 진입 × 100%\n\n**⚠️ 주의:**\n- 현재는 세션 만료 로직이 구현되지 않아 정확한 이탈 감지 불가\n- 세션 만료 메트릭 구현 후 활성화 예정\n\n**향후 구현 예정:**\n- 세션 타임아웃 (15분 무활동)\n- 브라우저 종료 감지\n- 명시적 세션 종료 추적",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 70
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "id": 14,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "showUnfilled": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 18
+        }
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "expr": "(sum(session_abandoned_total{stage=\"product_selection\"}) / clamp_min(sum(user_journey_stage_total{stage=\"product_selection\", action=\"enter\"}), 1)) * 100 or vector(0)",
+          "legendFormat": "1️⃣ 상품 선택 이탈률 ",
+          "refId": "A"
+        },
+        {
+          "expr": "(sum(session_abandoned_total{stage=\"review_collection\"}) / clamp_min(sum(user_journey_stage_total{stage=\"review_collection\", action=\"enter\"}), 1)) * 100 or vector(0)",
+          "legendFormat": "2️⃣ 리뷰 수집 이탈률 ",
+          "refId": "B"
+        },
+        {
+          "expr": "(sum(session_abandoned_total{stage=\"dialogue_start\"}) / clamp_min(sum(user_journey_stage_total{stage=\"dialogue_start\", action=\"enter\"}), 1)) * 100 or vector(0)",
+          "legendFormat": "3️⃣ 대화 시작 이탈률 ",
+          "refId": "C"
+        },
+        {
+          "expr": "(sum(session_abandoned_total{stage=\"dialogue_active\"}) / clamp_min(sum(user_journey_stage_total{stage=\"dialogue_active\", action=\"enter\"}), 1)) * 100 or vector(0)",
+          "legendFormat": "4️⃣ 대화 진행 이탈률 ",
+          "refId": "D"
+        },
+        {
+          "expr": "(sum(session_abandoned_total{reason=\"timeout\"}) / clamp_min(sum(user_journey_stage_total{action=\"enter\"}), 1)) * 100 or vector(0)",
+          "legendFormat": "⏱️ 전체 타임아웃 이탈률",
+          "refId": "E"
+        },
+        {
+          "expr": "(sum(session_abandoned_total{reason=\"browser_close\"}) / clamp_min(sum(user_journey_stage_total{action=\"enter\"}), 1)) * 100 or vector(0)",
+          "legendFormat": "🚪 전체 브라우저 종료 이탈률",
+          "refId": "F"
+        }
+      ],
+      "title": "사용자 여정 단계별 이탈률 (세션 만료/브라우저 종료 기반)",
+      "type": "bargauge"
     }
   ],
   "refresh": "10s",

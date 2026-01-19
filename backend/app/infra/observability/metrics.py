@@ -167,6 +167,20 @@ factors_matched_total = Counter(
     registry=REGISTRY
 )
 
+# ============================================================================
+# 사용자 여정 메트릭
+# ============================================================================
+
+# 사용자 여정 단계별 진행 상태
+user_journey_stage_total = Counter(
+    'user_journey_stage_total',
+    'User journey stage progress tracking',
+    ['stage', 'action', 'category'],
+    registry=REGISTRY
+)
+# stage: product_selection, review_collection, dialogue_start, dialogue_active, dialogue_complete
+# action: enter, complete
+
 
 # ============================================================================
 # 유틸리티 함수 및 데코레이터
