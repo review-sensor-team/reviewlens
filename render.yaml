@@ -47,7 +47,7 @@ services:
     buildCommand: |
       cd frontend
       npm ci
-      npm run build
+      VITE_API_URL=https://reviewlens-api.onrender.com npm run build
     staticPublishPath: ./frontend/dist
     headers:
       - path: /*
