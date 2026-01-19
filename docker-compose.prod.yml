@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reviewlens-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATA_SOURCE_MODE=${DATA_SOURCE_MODE:-file}
+      - DATA_DIR=${DATA_DIR:-/app/data}
+    env_file:
+      - .env
+    networks:
+      - reviewlens-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/metrics')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://reviewlens-api.onrender.com}
+    container_name: reviewlens-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - reviewlens-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # PostgreSQL (DB 모드 사용 시)
+  postgres:
+    image: postgres:14-alpine
+    container_name: reviewlens-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-reviewlens}
+      POSTGRES_USER: ${DB_USER:-reviewlens}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-reviewlens}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docs/reviewlens_db_schema/schema_postgres.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - reviewlens-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-reviewlens}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - database  # docker-compose --profile database up 으로 활성화
+
+  # Prometheus (모니터링)
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: reviewlens-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    networks:
+      - reviewlens-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana (대시보드)
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: reviewlens-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    depends_on:
+      - prometheus
+    networks:
+      - reviewlens-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+networks:
+  reviewlens-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

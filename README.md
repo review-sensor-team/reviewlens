@@ -12,6 +12,24 @@
 
 ---
 
+## 📦 빠른 설치
+
+### 기본 설치 (권장)
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### 최소 설치 (파일 모드만)
+```bash
+cd backend
+pip install -r requirements-minimal.txt
+```
+
+자세한 설치 옵션은 [backend/DEPENDENCIES.md](backend/DEPENDENCIES.md) 참고
+
+---
+
 ## 주요 변경사항 (V2)
 
 ### ✅ Clean Architecture 재구성 (2026-01-18)
@@ -264,9 +282,32 @@ source .venv/bin/activate  # macOS/Linux
 ```
 
 ### 2. 의존성 설치
+
+**기본 설치 (모든 기능)**:
 ```bash
-pip install -r backend/requirements.txt
+cd backend
+pip install -r requirements.txt
 ```
+
+**최소 설치 (파일 모드만)**:
+```bash
+cd backend
+pip install -r requirements-minimal.txt
+```
+
+**선택적 설치**:
+```bash
+# 데이터베이스 모드 추가
+pip install -r requirements-db.txt
+
+# LLM 제공자 추가
+pip install -r requirements-llm.txt
+
+# 개발 도구 추가
+pip install -r requirements-dev.txt
+```
+
+자세한 설치 옵션: [backend/DEPENDENCIES.md](backend/DEPENDENCIES.md)
 
 ### 3. 테스트 실행
 ```bash

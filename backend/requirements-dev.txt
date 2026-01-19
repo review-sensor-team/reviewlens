@@ -1,0 +1,19 @@
+# ReviewLens Backend - Development Dependencies
+# 개발 환경에서 추가로 필요한 도구들
+
+-r requirements.txt
+
+# Code Quality
+black>=24.0.0
+flake8>=7.0.0
+mypy>=1.8.0
+isort>=5.13.0
+
+# Testing
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+httpx>=0.26.0  # FastAPI 테스트용
+
+# Development Tools
+ipython>=8.20.0
+jupyter>=1.0.0

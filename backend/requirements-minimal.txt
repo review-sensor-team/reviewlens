@@ -1,4 +1,5 @@
-# ReviewLens Backend Dependencies
+# ReviewLens Backend - Minimal Dependencies
+# 최소한의 의존성만 포함 (파일 모드 사용 시)
 
 # Web Framework
 fastapi==0.115.0
@@ -23,13 +24,3 @@ prometheus-client>=0.20.0
 # Testing
 pytest==8.4.2
 pytest-asyncio>=0.23.0
-
-# LLM Providers (Optional - 필요한 것만 설치)
-# pip install openai anthropic google-generativeai
-openai>=1.50.0
-anthropic>=0.39.0
-google-generativeai>=0.8.0
-
-# Database - PostgreSQL (Optional - DB 모드 사용 시)
-# pip install "psycopg[binary,pool]"
-psycopg[binary,pool]>=3.2,<4
