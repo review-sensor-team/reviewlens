@@ -1,8 +1,16 @@
-# 데이터 소스 리팩토링 완료 보고서
+# 데이터 소스 리팩토링 완료 보고서 (2026-01-19)
 
 ## 변경 개요
 
 파일 기반 데이터 로딩을 새로운 데이터 소스 팩토리 패턴으로 전환하여, 파일/DB/하이브리드 모드를 Settings 기반으로 자동 전환할 수 있도록 개선했습니다.
+
+**완료 범위:**
+- ✅ ReviewService
+- ✅ ChatService
+- ✅ DialogueSession
+- ✅ Review API Router (_load_review_data 헬퍼)
+- ✅ Python 3.9 호환성 (Union 타입 힌팅)
+- ✅ 조건부 psycopg 임포트
 
 ## 변경된 파일
 
@@ -54,39 +62,100 @@ questions_df = data_source.get_questions_by_category(category=category)
 - `create_session()`: load_csvs 대신 데이터 소스 사용
 - 카테고리별 데이터 로딩으로 더 구체적인 조회
 
-### 3. Review Router (backend/app/api/routers/review.py)
+### 3. DialogueSession (backend/app/usecases/dialogue/session.py)
 
 **변경 전:**
 ```python
 from ...adapters.persistence.reg.store import load_csvs
 
-_, factors_df, _ = load_csvs(data_dir)
-_, _, questions_df = load_csvs(get_data_dir())
+if reviews_df is not None:
+    self.reviews_df = reviews_df
+    _, factors_df, questions_df = load_csvs(self.data_dir)
+else:
+    self.reviews_df, factors_df, questions_df = load_csvs(self.data_dir)
 ```
 
 **변경 후:**
 ```python
 from ...infra.database import get_data_source
 
-data_source = get_data_source(use_settings=True)
-factors_df = data_source.get_factors_by_category(category=category)
-questions_df = data_source.get_questions_by_category(category=category)
+data_source = get_data_source()
+
+if reviews_df is not None:
+    self.reviews_df = reviews_df
+    factors_df = data_source.get_factors_by_category(self.category)
+    questions_df = data_source.get_questions_by_category(self.category)
+else:
+    self.reviews_df = data_source.get_reviews_by_category(self.category)
+    factors_df = data_source.get_factors_by_category(self.category)
+    questions_df = data_source.get_questions_by_category(self.category)
+```
+
+**주요 업데이트:**
+- `__init__()`: load_csvs 완전 제거
+- 카테고리 기반 데이터 로딩
+- 타입 힌팅: `str | Path` → `Union[str, Path]` (Python 3.9 호환)
+
+### 4. Review Router (backend/app/api/routers/review.py)
+
+**변경 전:**
+```python
+from ...adapters.persistence.reg.store import load_csvs
+
+def _load_review_data(category: str, service: ReviewService):
+    loader = service._get_review_loader()
+    review_df = loader.load_by_category(category=category, latest=True)
+```
+
+**변경 후:**
+```python
+from ...infra.database import get_data_source
+
+def _load_review_data(category: str, service: ReviewService):
+    data_source = get_data_source()
+    review_df = data_source.get_reviews_by_category(category=category)
 ```
 
 **업데이트된 엔드포인트:**
-- `POST /api/v2/reviews/analyze-reviews`: Factors 로드시 데이터 소스 사용
-- `POST /api/v2/reviews/analyze-product`: Factors 로드시 데이터 소스 사용
-- `POST /api/v2/reviews/answer-question`: Questions 로드시 데이터 소스 사용
-- `_load_factor_questions()`: 레거시 지원 (TODO: 카테고리 기반 조회)
+- `POST /api/v2/reviews/analyze-product`: _load_review_data 헬퍼 수정
+- `GET /api/v2/reviews/factor-reviews/{session_id}/{factor_key}`: 데이터 소스 사용
+- `POST /api/v2/reviews/answer-question/{session_id}`: 데이터 소스 사용
 
-## 레거시 호환성
+## Python 3.9 호환성
 
-일부 함수에서는 카테고리 정보가 없을 때 레거시 `load_csvs()` 폴백 유지:
+모든 타입 힌팅을 Python 3.9와 호환되도록 수정:
+
+**변경:**
+- `str | Path` → `Union[str, Path]`
+- `typing.Union` 임포트 추가
+
+**영향받은 파일:**
+- `backend/app/infra/database/*.py`
+- `backend/app/infra/loaders/*.py`
+- `backend/app/infra/storage/csv_storage.py`
+- `backend/app/services/*.py`
+- `backend/app/usecases/dialogue/session.py`
+
+## 조건부 의존성
+
+psycopg를 선택적 의존성으로 처리:
+
 ```python
-# 카테고리 정보 없으면 레거시 방식 사용
-from ...adapters.persistence.reg.store import load_csvs
-_, _, questions_df = load_csvs(get_data_dir())
+# backend/app/infra/database/factory.py
+try:
+    from .data_source import DatabaseDataSource
+    from .connection_pool import db_pool
+    HAS_DB = True
+except (ImportError, RuntimeError):
+    DatabaseDataSource = None
+    db_pool = None
+    HAS_DB = False
 ```
+
+**효과:**
+- 파일 모드: psycopg 없이 작동
+- DB 모드: psycopg 필수 (런타임 에러)
+- 하이브리드 모드: psycopg 없으면 파일 모드로 폴백
 
 ## 설정 방법
 

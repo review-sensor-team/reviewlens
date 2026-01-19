@@ -1,6 +1,6 @@
 # DB 마이그레이션 상태
 
-## 완료된 작업 (2025-01-17)
+## 완료된 작업 (2026-01-19)
 
 ### 1. 인프라 구축 ✅
 - **Connection Pool**: PostgreSQL 연결 풀 관리 (`backend/app/infra/database/connection_pool.py`)
@@ -11,10 +11,12 @@
 ### 2. 서비스 레이어 리팩토링 ✅
 - **ReviewService**: 파일 로더 → 데이터 소스로 전환
 - **ChatService**: CSV 로더 → 데이터 소스로 전환
-- **Review Router**: 3개 엔드포인트 업데이트
-  - `/analyze-product`
+- **DialogueSession**: load_csvs() → get_data_source()로 전환
+- **Review Router**: 4개 엔드포인트 업데이트
+  - `/analyze-product` (_load_review_data 수정)
   - `/factor-reviews/{session_id}/{factor_key}`
   - `/answer-question/{session_id}`
+  - analyze_product 헬퍼 함수
 
 ### 3. Python 3.9 호환성 수정 ✅
 - **타입 힌팅**: `str | Path` → `Union[str, Path]` 전환
@@ -25,12 +27,15 @@
   - `backend/app/infra/database/config.py`
   - `backend/app/services/review_service.py`
   - `backend/app/services/chat_service.py`
+  - `backend/app/usecases/dialogue/session.py`
   - `backend/app/infra/loaders/*.py`
   - `backend/app/infra/storage/csv_storage.py`
 
 ### 4. 테스트 검증 ✅
 - **파일 모드**: psycopg 없이 정상 작동 (test_data_source.py)
+- **DialogueSession**: 데이터 소스 통합 검증 (test_dialogue_session.py)
 - **API 서버**: FastAPI 정상 응답 확인 (`/api/v2/reviews/config`)
+- **제품 분석**: 에브리봇 침구 로봇 X1 정상 작동 확인
 - **pytest**: 기본 테스트 통과
 
 ## 현재 상태
@@ -72,41 +77,39 @@ DB_PASSWORD=reviewlens
 
 ## 다음 단계
 
-### 우선순위 1: DialogueSession 리팩토링
-DialogueSession이 아직 load_csvs()를 직접 호출하고 있음.
+### 우선순위 1: DB 스키마 적용 및 데이터 마이그레이션
+모든 코드 리팩토링 완료. 이제 실제 DB 사용을 위한 인프라 구축 필요.
 
-**수정 필요**:
-```python
-# backend/app/usecases/dialogue/session.py
-# Before
-from backend.app.adapters.persistence.reg.store import load_csvs
-
-# After
-from backend.app.infra.database import get_data_source
-data_source = get_data_source()
-factors_df = data_source.get_factors_by_category(category)
-```
-
-### 우선순위 2: DB 스키마 적용
 ```bash
-# 1. PostgreSQL 시작
+# 1. PostgreSQL 설치 (Mac)
+brew install postgresql@14
+
+# 2. PostgreSQL 시작
 ./db_start.sh
 
-# 2. 스키마 생성
+# 3. 스키마 생성
 psql -h localhost -U reviewlens -d reviewlens < docs/reviewlens_db_schema/schema_postgres.sql
 
-# 3. 데이터 마이그레이션 (수동)
+# 4. 데이터 마이그레이션 스크립트 작성
 # - 파일 → DB 복사 스크립트 작성
 # - 카테고리, 제품, 리뷰 순서로 이동
 ```
 
-### 우선순위 3: 하이브리드 모드 테스트
+### 우선순위 2: 하이브리드 모드 테스트
 ```env
 DATA_SOURCE_MODE=hybrid
 ```
 - 파일과 DB 동시 사용
 - 신뢰성 검증
 - 성능 비교
+
+### 우선순위 3: DB 모드 전환
+```env
+DATA_SOURCE_MODE=database
+```
+- 완전한 DB 기반 운영
+- 파일 시스템 의존성 제거
+- 성능 모니터링
 
 ## 코드 구조
 
