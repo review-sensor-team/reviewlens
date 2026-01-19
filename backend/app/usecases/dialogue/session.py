@@ -8,11 +8,12 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 
 import pandas as pd
 
-from ...adapters.persistence.reg.store import Factor, Question, load_csvs, parse_factors, parse_questions
+from ...adapters.persistence.reg.store import Factor, Question, parse_factors, parse_questions
+from ...infra.database import get_data_source
 from ...domain.rules.review.scoring import compute_review_factor_scores
 from ...domain.rules.review.normalize import normalize_review, normalize_text
 from...domain.rules.review.retrieval import retrieve_evidence_reviews
@@ -76,7 +77,7 @@ def _jaccard(a: List[str], b: List[str]) -> float:
 class DialogueSession:
     """3~5턴 대화 세션(수렴 로직: top3 Jaccard 기반)"""
 
-    def __init__(self, category: str, data_dir: str | Path, reviews_df: Optional[pd.DataFrame] = None, product_name: Optional[str] = None):
+    def __init__(self, category: str, data_dir: Union[str, Path], reviews_df: Optional[pd.DataFrame] = None, product_name: Optional[str] = None):
         self.category = category
         self.data_dir = Path(data_dir)
         self.product_name = product_name or "이 제품"  # 제품명 저장
@@ -98,18 +99,24 @@ class DialogueSession:
         # 메트릭: 세션 시작 카운트
         dialogue_sessions_total.labels(category=category).inc()
 
-        # Load data
+        # Load data using data source abstraction
         logger.info(f"[DialogueSession 초기화] category={category}, data_dir={data_dir}, custom_reviews={reviews_df is not None}, product_name={product_name}")
+        
+        # 데이터 소스 가져오기
+        data_source = get_data_source()
         
         if reviews_df is not None:
             # 외부에서 제공한 리뷰 사용 (세션별 수집 리뷰)
             self.reviews_df = reviews_df
-            _, factors_df, questions_df = load_csvs(self.data_dir)
+            factors_df = data_source.get_factors_by_category(self.category)
+            questions_df = data_source.get_questions_by_category(self.category)
             logger.debug(f"  - reviews: {len(self.reviews_df)}건 (세션 데이터), factors: {len(factors_df)}건, questions: {len(questions_df)}건")
         else:
-            # CSV에서 로드 (기본 동작, 테스트용)
-            self.reviews_df, factors_df, questions_df = load_csvs(self.data_dir)
-            logger.debug(f"  - reviews: {len(self.reviews_df)}건 (CSV), factors: {len(factors_df)}건, questions: {len(questions_df)}건")
+            # 데이터 소스에서 로드 (기본 동작, 테스트용)
+            self.reviews_df = data_source.get_reviews_by_category(self.category)
+            factors_df = data_source.get_factors_by_category(self.category)
+            questions_df = data_source.get_questions_by_category(self.category)
+            logger.debug(f"  - reviews: {len(self.reviews_df)}건 (data_source), factors: {len(factors_df)}건, questions: {len(questions_df)}건")
         
         # 모든 factor 파싱 후 현재 카테고리만 필터링
         all_factors = parse_factors(factors_df)

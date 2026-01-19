@@ -13,7 +13,8 @@ from pydantic import BaseModel
 from ...services.review_service import ReviewService
 from ...core.settings import settings
 from ...infra.observability.metrics import dialogue_turns_total, track_errors
-from ...adapters.persistence.reg.store import load_csvs, parse_factors
+from ...infra.database import get_data_source
+from ...adapters.persistence.reg.store import parse_factors
 from ...usecases.dialogue.session import DialogueSession
 
 logger = logging.getLogger(__name__)
@@ -392,7 +393,7 @@ def _build_review_samples(matched_df, target_factor, limit: int = 5) -> list:
 
 
 def _load_factor_questions(factor_key: str) -> list:
-    """Factor에 해당하는 질문 로드
+    """Factor에 해당하는 질문 로드 (데이터 소스 사용)
     
     Args:
         factor_key: Factor key
@@ -400,6 +401,9 @@ def _load_factor_questions(factor_key: str) -> list:
     Returns:
         질문 리스트
     """
+    # 데이터 소스에서 카테고리 모르므로 모든 카테고리의 questions 로드
+    # TODO: 카테고리 정보를 세션에서 가져와서 사용
+    from ...adapters.persistence.reg.store import load_csvs
     _, _, questions_df = load_csvs(get_data_dir())
     
     related_questions = questions_df[
@@ -514,16 +518,14 @@ def _load_review_data(category: str, service: ReviewService):
     Raises:
         HTTPException: 리뷰 파일 없음
     """
-    loader = service._get_review_loader()
-    review_df = None
+    # 데이터 소스에서 리뷰 로드
+    data_source = get_data_source()
+    review_df = data_source.get_reviews_by_category(category=category)
     vendor = "smartstore"
     
-    if loader:
-        review_df = loader.load_by_category(category=category, latest=True)
-        if review_df is not None:
-            logger.info(f"리뷰 로드 성공: category={category} ({len(review_df)}건)")
-    
-    if review_df is None or len(review_df) == 0:
+    if review_df is not None and len(review_df) > 0:
+        logger.info(f"리뷰 로드 성공: category={category} ({len(review_df)}건)")
+    else:
         raise HTTPException(
             status_code=404,
             detail=f"카테고리 '{category}'의 리뷰 파일을 찾을 수 없습니다"
@@ -687,9 +689,9 @@ async def analyze_reviews(
         # 2. 정규화
         normalized_df = review_service.normalize_reviews(reviews_df, vendor="smartstore")
         
-        # 3. Factors 로드
-        data_dir = get_data_dir()
-        _, factors_df, _ = load_csvs(data_dir)
+        # 3. Factors 로드 (데이터 소스 사용)
+        data_source = get_data_source(use_settings=True)
+        factors_df = data_source.get_factors_by_category(category=request.category)
         all_factors = parse_factors(factors_df)
         factors = [f for f in all_factors if f.category == request.category]
         
@@ -787,8 +789,9 @@ async def analyze_product(
         # 2. 리뷰 데이터 로드 및 정규화 (helper 함수)
         normalized_df = _load_review_data(category, service)
         
-        # 3. Factor 로드 (해당 카테고리만)
-        _, factors_df, _ = load_csvs(get_data_dir())
+        # 3. Factor 로드 (해당 카테고리만) - 데이터 소스 사용
+        data_source = get_data_source(use_settings=True)
+        factors_df = data_source.get_factors_by_category(category=category)
         all_factors = parse_factors(factors_df)
         factors = [f for f in all_factors if f.category == category]
         
@@ -984,7 +987,15 @@ async def answer_question(
         
         # 4. 수렴되지 않았으면 다음 질문 로드
         if not is_converged:
-            _, _, questions_df = load_csvs(get_data_dir())
+            # 데이터 소스에서 questions 로드
+            data_source = get_data_source(use_settings=True)
+            category = session_data.get("category", "")
+            if category:
+                questions_df = data_source.get_questions_by_category(category=category)
+            else:
+                # 카테고리 정보 없으면 레거시 방식 사용
+                from ...adapters.persistence.reg.store import load_csvs
+                _, _, questions_df = load_csvs(get_data_dir())
             
             # factor_key 결정
             current_factor_key = request.factor_key or (session_data.get("factors", [])[0].factor_key if session_data.get("factors") else None)

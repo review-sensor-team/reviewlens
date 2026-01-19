@@ -1,7 +1,7 @@
 """CSV 저장소 - Infrastructure Layer"""
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import pandas as pd
 from datetime import datetime
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class CSVStorage:
     """CSV/JSON 파일 기반 데이터 저장소"""
     
-    def __init__(self, data_dir: str | Path, file_format: str = "json"):
+    def __init__(self, data_dir: Union[str, Path], file_format: str = "json"):
         """
         Args:
             data_dir: 데이터 디렉토리 경로

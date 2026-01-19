@@ -1,7 +1,7 @@
 """Review Loader Factory"""
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from .review_loader import ReviewLoader
 from .json_review_loader import JSONReviewLoader
@@ -19,7 +19,7 @@ class ReviewLoaderFactory:
     
     @staticmethod
     def create(
-        data_dir: str | Path,
+        data_dir: Union[str, Path],
         source_mode: str = "json_file",
         file_format: str = "json"
     ) -> ReviewLoader:
@@ -54,7 +54,7 @@ class ReviewLoaderFactory:
             return JSONReviewLoader(data_dir=data_dir)
     
     @staticmethod
-    def create_from_settings(settings, data_dir: str | Path = None) -> ReviewLoader:
+    def create_from_settings(settings, data_dir: Optional[Union[str, Path]] = None) -> ReviewLoader:
         """설정 파일에서 로더 생성
         
         Args:

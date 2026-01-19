@@ -1,11 +1,10 @@
 """리뷰 서비스 - 리뷰 수집 및 분석 유스케이스 (Service Layer)"""
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 import pandas as pd
 
-from ..infra.loaders import ReviewLoaderFactory
-from ..infra.storage.csv_storage import CSVStorage
+from ..infra.database import get_data_source
 from ..infra.cache.review_cache import ReviewCache
 from ..infra.collectors.smartstore import SmartStoreCollector
 from ..domain.rules.review.normalize import normalize_review, dedupe_reviews
@@ -21,43 +20,30 @@ class ReviewService:
     
     def __init__(
         self,
-        data_dir: str | Path,
+        data_dir: Union[str, Path],
         use_cache: bool = True,
-        use_storage: bool = True
+        use_data_source: bool = True
     ):
         """
         Args:
-            data_dir: 데이터 디렉토리
+            data_dir: 데이터 디렉토리 (레거시 호환용, 무시됨)
             use_cache: 캐시 사용 여부
-            use_storage: 저장소 사용 여부
+            use_data_source: 데이터 소스 사용 여부 (Settings 기반)
         """
         self.data_dir = Path(data_dir)
         self.use_cache = use_cache
-        self.use_storage = use_storage
+        self.use_data_source = use_data_source
         
         # Infrastructure 레이어 초기화 (lazy loading)
         self._collector = None
         self._cache = None
-        self._storage = None
-        self._review_loader = None  # Factory pattern으로 교체
+        self._data_source = None  # 새로운 데이터 소스
     
-    def _get_review_loader(self):
-        """Review Loader 인스턴스 가져오기 (lazy loading with Factory)"""
-        if self._review_loader is None:
-            self._review_loader = ReviewLoaderFactory.create_from_settings(
-                settings=settings,
-                data_dir=self.data_dir
-            )
-        return self._review_loader
-    
-    def _get_storage(self):
-        """Storage 인스턴스 가져오기 (lazy loading) - Deprecated, use _get_review_loader instead"""
-        if self._storage is None and self.use_storage:
-            self._storage = CSVStorage(
-                data_dir=self.data_dir,
-                file_format=settings.REVIEW_FILE_FORMAT
-            )
-        return self._storage
+    def _get_data_source(self):
+        """데이터 소스 인스턴스 가져오기 (lazy loading)"""
+        if self._data_source is None and self.use_data_source:
+            self._data_source = get_data_source(use_settings=True)
+        return self._data_source
     
     def _get_cache(self):
         """Cache 인스턴스 가져오기 (lazy loading)"""
@@ -66,13 +52,19 @@ class ReviewService:
         return self._cache
     
     def _load_factor_csv(self) -> Optional[pd.DataFrame]:
-        """Factor CSV 로드 및 상품 그룹화"""
-        factor_csv_path = self.data_dir / "factor" / "reg_factor_v4.csv"
-        
-        if not factor_csv_path.exists():
+        """Factor CSV 로드 및 상품 그룹화 (데이터 소스 사용)"""
+        data_source = self._get_data_source()
+        if not data_source:
             return None
         
         try:
+            # 데이터 소스에서 모든 카테고리의 factors 로드
+            # 여기서는 카테고리를 모르므로 파일 직접 로드 (레거시)
+            factor_csv_path = self.data_dir / "factor" / "reg_factor_v4.csv"
+            
+            if not factor_csv_path.exists():
+                return None
+            
             df = pd.read_csv(factor_csv_path)
             required_cols = ['product_name', 'category', 'category_name']
             
@@ -87,25 +79,23 @@ class ReviewService:
             return None
     
     def _match_review_file(self, category: str, product_name: str, product_id: str) -> int:
-        """리뷰 파일 매칭 및 카운트 반환"""
-        storage = self._get_storage()
-        if not storage:
+        """리뷰 파일 매칭 및 카운트 반환 (데이터 소스 사용)"""
+        data_source = self._get_data_source()
+        if not data_source:
             return 0
         
-        review_files = storage.list_reviews()
-        for file_info in review_files:
-            pid = file_info.get("product_id", "")
-            file_category = file_info.get("category", "")
+        try:
+            # 카테고리 또는 상품 ID로 리뷰 조회
+            reviews_df = data_source.get_reviews_by_category(category=category, limit=None)
+            if reviews_df is not None and not reviews_df.empty:
+                return len(reviews_df)
             
-            # category와 product_name으로 매칭
-            category_match = category in file_category or category in pid
-            name_match = product_name.lower() in pid.lower() or product_id.lower() in pid.lower()
-            
-            if category_match and name_match:
-                vendor = file_info.get("vendor", "")
-                review_df = storage.load_reviews(vendor, pid, latest=True)
-                if review_df is not None:
-                    return len(review_df)
+            # 카테고리로 찾지 못하면 product_id로 시도
+            reviews_df = data_source.get_reviews_by_product(product_id=product_id, limit=None)
+            if reviews_df is not None and not reviews_df.empty:
+                return len(reviews_df)
+        except Exception as e:
+            logger.debug(f"리뷰 매칭 중 오류 (무시): {e}")
         
         return 0
     
@@ -179,15 +169,25 @@ class ReviewService:
         return products
     
     def _load_from_storage(self, vendor: str, product_id: str) -> Optional[pd.DataFrame]:
-        """저장소에서 리뷰 로드"""
-        storage = self._get_storage()
-        if not storage:
+        """데이터 소스에서 리뷰 로드"""
+        data_source = self._get_data_source()
+        if not data_source:
             return None
         
-        cached_df = storage.load_reviews(vendor=vendor, product_id=product_id)
-        if cached_df is not None:
-            logger.info(f"  - Storage에서 로드: {len(cached_df)}건")
-        return cached_df
+        try:
+            # product_id로 조회
+            cached_df = data_source.get_reviews_by_product(
+                product_id=product_id,
+                vendor=vendor,
+                limit=None
+            )
+            if cached_df is not None and not cached_df.empty:
+                logger.info(f"  - 데이터 소스에서 로드: {len(cached_df)}건")
+                return cached_df
+        except Exception as e:
+            logger.debug(f"데이터 소스 로드 중 오류: {e}")
+        
+        return None
     
     def _collect_from_crawler(self, vendor: str, product_id: str, product_url: str, max_reviews: int) -> Optional[pd.DataFrame]:
         """크롤러로 리뷰 수집"""
@@ -198,10 +198,17 @@ class ReviewService:
                 
                 reviews_df = pd.DataFrame(reviews)
                 
-                # Storage에 저장
-                storage = self._get_storage()
-                if storage:
-                    storage.save_reviews(reviews_df, vendor, product_id, suffix="collected")
+                # 데이터 소스에 저장
+                data_source = self._get_data_source()
+                if data_source:
+                    data_source.save_reviews(
+                        reviews_df=reviews_df,
+                        metadata={
+                            "vendor": vendor,
+                            "product_id": product_id,
+                            "source_type": "crawler"
+                        }
+                    )
                 
                 logger.info(f"  - 크롤링 완료: {len(reviews_df)}건")
                 return reviews_df

@@ -1,7 +1,9 @@
 """채팅 서비스 - 세션 및 대화 유스케이스 (Service Layer)"""
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Union
 from pathlib import Path
+
+from ..infra.database import get_data_source
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ChatService:
     """대화 세션 관리 및 턴 처리"""
     
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: Union[str, Path]):
         """
         Args:
             data_dir: Factor/Question CSV 데이터 디렉토리
@@ -35,16 +37,22 @@ class ChatService:
         Returns:
             세션 정보
         """
-        from ..adapters.persistence.reg.store import load_csvs, parse_factors, parse_questions
+        from ..adapters.persistence.reg.store import parse_factors, parse_questions
         
         logger.info(f"세션 생성: {session_id} (category={category}, product={product_name})")
         
-        # Factor/Question 데이터 로드
+        # 데이터 소스에서 Factor/Question 로드
+        data_source = get_data_source(use_settings=True)
+        
+        # Reviews 로드 (reviews_df가 없으면 데이터 소스에서 로드)
         if reviews_df is not None:
-            _, factors_df, questions_df = load_csvs(self.data_dir)
             reviews = reviews_df
         else:
-            reviews, factors_df, questions_df = load_csvs(self.data_dir)
+            reviews = data_source.get_reviews_by_category(category=category)
+        
+        # Factor/Question 로드
+        factors_df = data_source.get_factors_by_category(category=category)
+        questions_df = data_source.get_questions_by_category(category=category)
         
         # 파싱
         all_factors = parse_factors(factors_df)

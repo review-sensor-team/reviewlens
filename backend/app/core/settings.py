@@ -91,6 +91,23 @@ class Settings(BaseSettings):
     
     # UI 설정
     USE_PRODUCT_SELECTION: bool = True        # True: 상품 선택 모드, False: URL 입력 모드
+    
+    # 데이터 소스 설정
+    DATA_SOURCE_MODE: str = "file"            # "file", "database", "hybrid"
+    DATA_DIR: str = "backend/data"            # 파일 데이터 디렉토리
+    
+    # PostgreSQL 설정
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5432
+    DB_NAME: str = "reviewlens"
+    DB_USER: str = "reviewlens"
+    DB_PASSWORD: str = "reviewlens"
+    
+    # 컨넥션 풀 설정
+    DB_POOL_MIN_SIZE: int = 2
+    DB_POOL_MAX_SIZE: int = 10
+    DB_TIMEOUT: float = 30.0
+    DB_MAX_IDLE: float = 600.0
 
     #Supported LLM Models
     SUPPORTED_PROVIDERS: List[str] = ['google', 'openai']

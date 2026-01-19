@@ -1,7 +1,7 @@
 """URL Review Loader"""
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 import pandas as pd
 
 from .review_loader import ReviewLoader
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class URLReviewLoader(ReviewLoader):
     """URL에서 리뷰 수집 후 로드"""
     
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: Union[str, Path]):
         super().__init__(data_dir)
         self._collector = None
     

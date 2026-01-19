@@ -1,7 +1,7 @@
 """Review Loader - Abstract Base Class"""
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 import pandas as pd
 
 
@@ -14,7 +14,7 @@ class ReviewLoader(ABC):
     - URL에서 수집
     """
     
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: Union[str, Path]):
         self.data_dir = Path(data_dir)
         self.review_dir = self.data_dir / "review"
         self.review_dir.mkdir(parents=True, exist_ok=True)
