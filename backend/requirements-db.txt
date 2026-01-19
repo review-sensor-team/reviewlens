@@ -1,0 +1,7 @@
+# ReviewLens Backend - Database Dependencies
+# PostgreSQL 사용 시 필요한 의존성
+
+-r requirements-minimal.txt
+
+# PostgreSQL Driver
+psycopg[binary,pool]>=3.2,<4

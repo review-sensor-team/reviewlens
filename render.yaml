@@ -1,0 +1,89 @@
+# Render.com 서비스 설정
+# https://render.com/docs/yaml-spec
+
+services:
+  # Backend API 서비스
+  - type: web
+    name: reviewlens-backend
+    env: python
+    region: singapore  # 또는 oregon, frankfurt
+    plan: free  # free, starter, standard, pro
+    branch: main
+    buildCommand: |
+      cd backend
+      pip install -r requirements.txt
+    startCommand: |
+      cd backend
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: DATA_SOURCE_MODE
+        value: file
+      - key: DATA_DIR
+        value: /opt/render/project/src/backend/data
+      - key: PYTHONPATH
+        value: /opt/render/project/src/backend
+      # CORS 설정
+      - key: ALLOWED_ORIGINS
+        value: https://reviewlens-frontend.onrender.com,https://reviewlens-api.onrender.com
+      # 민감한 정보는 Render 대시보드에서 설정
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+    healthCheckPath: /metrics
+    autoDeploy: true  # main 브랜치 푸시 시 자동 배포
+    
+  # Frontend 정적 사이트
+  - type: web
+    name: reviewlens-frontend
+    env: static
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: |
+      cd frontend
+      npm ci
+      npm run build
+    staticPublishPath: ./frontend/dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      - key: VITE_API_URL
+        value: https://reviewlens-api.onrender.com
+    autoDeploy: true
+
+  # PostgreSQL 데이터베이스 (선택사항)
+  - type: pserv
+    name: reviewlens-postgres
+    plan: free
+    region: singapore
+    databaseName: reviewlens
+    databaseUser: reviewlens
+    ipAllowList: []  # 모든 IP 허용 (프로덕션에서는 제한 권장)
+
+# 환경 변수 그룹 (여러 서비스에서 공유)
+envVarGroups:
+  - name: reviewlens-shared
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO

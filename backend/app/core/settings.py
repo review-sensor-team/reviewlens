@@ -10,7 +10,20 @@ class Settings(BaseSettings):
     
     APP_NAME: str = "ReviewLens"
     DEBUG: bool = True
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+    
+    def get_allowed_origins(self) -> List[str]:
+        """ALLOWED_ORIGINS를 파싱하여 리스트 반환
+        
+        Returns:
+            허용된 origin 리스트
+        """
+        # 환경 변수에서 먼저 읽기 시도
+        origins = os.getenv("ALLOWED_ORIGINS", self.ALLOWED_ORIGINS)
+        
+        if not origins:
+            return ["*"]
+        return [origin.strip() for origin in origins.split(",") if origin.strip()]
     
 
     #Feature/api LLM Configurations
@@ -130,7 +143,7 @@ class Settings(BaseSettings):
         return "gpt-4o-mini"  # 기본값
     
     model_config = ConfigDict(
-        env_file=".env",
+        env_file="../.env",  # backend/app/core에서 루트의 .env 찾기
         case_sensitive=True,
         extra="ignore"  # .env의 추가 필드 무시
     )
