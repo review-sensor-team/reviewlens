@@ -64,6 +64,10 @@ htmlcov/
 monitoring/bin/
 monitoring/data/
 
+# Monitoring - 프로덕션 설정 제외 (보안)
+monitoring/grafana/grafana.ini
+monitoring/prometheus/prometheus.yml
+
 # OS specific
 .DS_Store
 Thumbs.db

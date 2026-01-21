@@ -1,10 +1,14 @@
-# Prometheus 설정 파일
+# Prometheus 설정 파일 - 로컬 개발 환경용
+# 사용법: prometheus --config.file=monitoring/prometheus.yml
+# 환경: 로컬 Windows/Mac (Homebrew 또는 바이너리 실행)
+
 global:
   scrape_interval: 15s  # 15초마다 메트릭 수집
   evaluation_interval: 15s  # 15초마다 규칙 평가
   external_labels:
-    monitor: 'reviewlens-monitor'
+    cluster: 'reviewlens-local'
     environment: 'development'
+    region: 'localhost'
 
 # Alertmanager 설정 (선택사항)
 # alerting:
@@ -23,15 +27,17 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # ReviewLens 백엔드 API
+  # ReviewLens 백엔드 API (로컬 개발 서버)
   - job_name: 'reviewlens-backend'
     scrape_interval: 10s  # 백엔드는 더 자주 수집
+    scrape_timeout: 5s
     metrics_path: '/metrics'
     static_configs:
       - targets: ['host.docker.internal:8000']  # Docker에서 호스트 머신 접근
         labels:
           service: 'reviewlens-api'
-          env: 'dev'
+          env: 'development'
+          platform: 'local'
     
     # 메트릭 재라벨링 (선택사항)
     metric_relabel_configs:

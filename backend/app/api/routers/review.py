@@ -730,13 +730,6 @@ async def analyze_reviews(
 async def get_available_products(
     service: ReviewService = Depends(get_review_service)
 ):
-    # 📊 사용자 여정: 상품 선택 단계 진입
-    user_journey_stage_total.labels(
-        stage="product_selection",
-        action="enter",
-        category="unknown"
-    ).inc()
-
     """사용 가능한 상품 목록 조회
     
     USE_PRODUCT_SELECTION=True일 때 사용
@@ -828,7 +821,17 @@ async def analyze_product(
             product_id=product_name
         )
         
-        # 📊 사용자 여정: 리뷰 수집 완료 & 대화 시작 진입
+        # 📊 사용자 여정: 상품 선택 (진입 & 완료) → 리뷰 수집 완료 → 대화 시작 진입
+        user_journey_stage_total.labels(
+            stage="product_selection",
+            action="enter",
+            category=category
+        ).inc()
+        user_journey_stage_total.labels(
+            stage="product_selection",
+            action="complete",
+            category=category
+        ).inc()
         user_journey_stage_total.labels(
             stage="review_collection",
             action="complete",

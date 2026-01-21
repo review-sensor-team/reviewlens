@@ -1,0 +1,91 @@
+# ReviewLens 모니터링 스택 - VM 프로덕션 환경용
+# 사용법: docker-compose -f docker-compose.monitoring.prod.yml up -d
+# 환경: Google Cloud VM (Docker Compose)
+# 백엔드: reviewlens-api.onrender.com:443
+
+version: '3.8'
+
+services:
+  # Prometheus - 메트릭 수집 및 저장 (프로덕션)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: reviewlens_prometheus_prod
+    ports:
+      - "9090:9090"
+    volumes:
+      # 프로덕션용 설정 파일
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data_prod:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'  # 프로덕션은 30일 보관
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--log.level=info'  # 프로덕션용 일반 로그
+    restart: unless-stopped
+    networks:
+      - monitoring_prod
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Grafana - 메트릭 시각화 대시보드 (프로덕션)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: reviewlens_grafana_prod
+    ports:
+      - "3001:3000"  # VM 외부에서 3001로 접근
+    environment:
+      # 프로덕션 계정 (반드시 변경하세요!)
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://34.64.238.41:3001
+      - GF_SERVER_DOMAIN=34.64.238.41
+      - GF_LOG_LEVEL=info  # 프로덕션용 일반 로그
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false  # 외부 보고 비활성화
+    volumes:
+      - grafana_data_prod:/var/lib/grafana
+      # 프로덕션용 설정 파일
+      - ./monitoring/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    networks:
+      - monitoring_prod
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  prometheus_data_prod:
+    name: reviewlens_prometheus_data_prod
+  grafana_data_prod:
+    name: reviewlens_grafana_data_prod
+
+networks:
+  monitoring_prod:
+    name: reviewlens_monitoring_prod
+    driver: bridge
