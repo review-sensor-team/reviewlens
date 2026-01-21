@@ -1,10 +1,11 @@
-# Prometheus 설정 파일
+# Prometheus 설정 파일 - Google Cloud VM 프로덕션 환경용
 global:
   scrape_interval: 15s  # 15초마다 메트릭 수집
   evaluation_interval: 15s  # 15초마다 규칙 평가
   external_labels:
     monitor: 'reviewlens-monitor'
-    environment: 'development'
+    environment: 'production'
+    region: 'asia-northeast3-c'
 
 # Alertmanager 설정 (선택사항)
 # alerting:
@@ -22,20 +23,35 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          instance_type: 'monitoring'
 
-  # ReviewLens 백엔드 API
+  # ReviewLens 백엔드 API (Render.com)
   - job_name: 'reviewlens-backend'
     scrape_interval: 10s  # 백엔드는 더 자주 수집
+    scrape_timeout: 5s
     metrics_path: '/metrics'
+    scheme: https  # HTTPS 사용
     static_configs:
-      - targets: ['host.docker.internal:8000']  # Docker에서 호스트 머신 접근
+      - targets: ['reviewlens-api.onrender.com:443']
         labels:
           service: 'reviewlens-api'
-          env: 'dev'
+          env: 'production'
+          platform: 'render'
     
-    # 메트릭 재라벨링 (선택사항)
+    # TLS 설정
+    tls_config:
+      insecure_skip_verify: false  # 인증서 검증 활성화
+    
+    # 메트릭 재라벨링 (불필요한 메트릭 제외)
     metric_relabel_configs:
-      # 불필요한 메트릭 제외 예시
+      # Python 내부 메트릭 제외 (선택사항)
+      - source_labels: [__name__]
+        regex: 'python_gc_.*'
+        action: drop
+      
+      # Go 메트릭 제외
       - source_labels: [__name__]
         regex: 'go_.*'
         action: drop
