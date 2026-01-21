@@ -115,9 +115,10 @@ def create_app() -> FastAPI:
     app.add_middleware(MetricsMiddleware)
     
     # CORS middleware
+    allowed_origins = settings.get_allowed_origins()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -130,7 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, tags=["chat"])
     
     logger.info("API 라우터 등록 완료")
-    logger.info(f"CORS 허용 도메인: {settings.ALLOWED_ORIGINS}")
+    logger.info(f"CORS 허용 도메인: {allowed_origins}")
 
     return app
 

@@ -1,6 +1,7 @@
 import { ref, nextTick, onMounted, computed } from 'vue'
 import { startSession, sendMessage, resetSession, getProducts, analyzeProduct, getAppConfig } from '../api/chat.js'
 import { marked } from 'marked'
+import config from '../config.js'
 
 export function useReviewLens() {
   // Marked 옵션 설정
@@ -278,7 +279,7 @@ export function useReviewLens() {
         payload.strategy = strategyToSend
       }
       
-      const response = await fetch('http://localhost:8000/api/v2/reviews/rate-response', {
+      const response = await fetch(`${config.baseURL}/api/v2/reviews/rate-response`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -420,7 +421,7 @@ export function useReviewLens() {
       const factorKey = lastMessage?.factorKey
       
       const response = await fetch(
-        `http://localhost:8000/api/v2/reviews/answer-question/${sessionId.value}`,
+        `${config.baseURL}/api/v2/reviews/answer-question/${sessionId.value}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -597,7 +598,7 @@ export function useReviewLens() {
     loadingText.value = '관련 리뷰를 찾고 있어요...'
     
     try {
-      const response = await fetch(`http://localhost:8000/api/v2/reviews/factor-reviews/${sessionId.value}/${factorKey}?limit=5`)
+      const response = await fetch(`${config.baseURL}/api/v2/reviews/factor-reviews/${sessionId.value}/${factorKey}?limit=5`)
       
       if (response.status === 501) {
         loading.value = false
@@ -692,7 +693,7 @@ export function useReviewLens() {
       console.log('answer:', opt)
       
       const response = await fetch(
-        `http://localhost:8000/api/v2/reviews/answer-question/${sessionId.value}`,
+        `${config.baseURL}/api/v2/reviews/answer-question/${sessionId.value}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
